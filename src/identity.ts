@@ -8,6 +8,7 @@ export interface DerivedIdentity {
   externalId: string;
   phoneCandidates: string[];
   senderId?: string;
+  subjectToken?: string;
 }
 
 export async function deriveIdentity(input: ConfigureSpectrumIdentityInput): Promise<DerivedIdentity> {
@@ -19,12 +20,14 @@ export async function deriveIdentity(input: ConfigureSpectrumIdentityInput): Pro
     : `sender:${input.message.platform}:${senderId || input.space.id}`;
   const subjectKey = `sp_${hash(material)}`;
   const threadKey = `${input.message.platform}:${input.space.id}`;
+  const subjectToken = defaultSubjectToken(input.space, input.message);
   return {
     subjectKey,
     threadKey,
     externalId: `spectrum:${subjectKey}`,
     phoneCandidates,
     ...(senderId ? { senderId } : {}),
+    ...(subjectToken ? { subjectToken } : {}),
   };
 }
 
@@ -94,4 +97,49 @@ function stringField(value: unknown, field: string): string | undefined {
   if (!value || typeof value !== "object") return undefined;
   const candidate = (value as Record<string, unknown>)[field];
   return typeof candidate === "string" && candidate.trim() ? candidate.trim() : undefined;
+}
+
+function defaultSubjectToken(space: Space, message: Message): string | undefined {
+  return firstToken(
+    tokenField(message, "subjectToken"),
+    tokenField(message, "subject_token"),
+    tokenField(message, "signedSubjectToken"),
+    tokenField(message, "signed_subject_token"),
+    tokenField(message, "photonSubjectToken"),
+    tokenField(message, "photon_subject_token"),
+    nestedToken(message, "metadata"),
+    nestedToken(message, "providerMetadata"),
+    nestedToken(message, "provider_metadata"),
+    nestedToken(message.sender, "metadata"),
+    nestedToken(space, "metadata"),
+    nestedToken(space, "providerMetadata"),
+    nestedToken(space, "provider_metadata")
+  );
+}
+
+function nestedToken(value: unknown, field: string): string | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  return defaultTokenFromObject((value as Record<string, unknown>)[field]);
+}
+
+function defaultTokenFromObject(value: unknown): string | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  return firstToken(
+    tokenField(value, "subjectToken"),
+    tokenField(value, "subject_token"),
+    tokenField(value, "signedSubjectToken"),
+    tokenField(value, "signed_subject_token"),
+    tokenField(value, "photonSubjectToken"),
+    tokenField(value, "photon_subject_token")
+  );
+}
+
+function tokenField(value: unknown, field: string): string | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = (value as Record<string, unknown>)[field];
+  return typeof candidate === "string" && candidate.trim() ? candidate.trim() : undefined;
+}
+
+function firstToken(...values: Array<string | undefined>): string | undefined {
+  return values.find((value) => Boolean(value));
 }

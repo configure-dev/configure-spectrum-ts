@@ -13,8 +13,11 @@ import type {
   ConfigureSpectrumFactory,
   ConfigureSpectrumHandleResult,
   ConfigureSpectrumIdentityInput,
+  ConfigureSpectrumMessageUrlFallbackReason,
+  ConfigureSpectrumMessageUrlResult,
   ConfigureSpectrumOptions,
   ConfigureSpectrumSignInMessage,
+  ConfigureSpectrumSignInOptions,
   ConfigureSpectrumSubject,
   ConfigureSpectrumTokenValidation,
 } from "./types.js";
@@ -36,6 +39,7 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
   });
   const validatedTokens = new Set<string>();
   const journeyByContext = new WeakMap<ConfigureSpectrumContext, string>();
+  const messageUrlByContext = new WeakMap<ConfigureSpectrumContext, Promise<ConfigureSpectrumMessageUrlResult | null>>();
 
   async function resolve(space: Space, message: Message): Promise<ConfigureSpectrumContext> {
     const identityInput: ConfigureSpectrumIdentityInput = { space, message };
@@ -227,10 +231,13 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
         externalId: input.derived.externalId,
         ...(input.derived.senderId ? { senderId: input.derived.senderId } : {}),
         ...(input.saved?.signInSentAt ? { signInSentAt: input.saved.signInSentAt } : {}),
+        ...(input.saved?.signInExpiresAt ? { signInExpiresAt: input.saved.signInExpiresAt } : {}),
+        ...(input.saved?.signInIdempotencyKey ? { signInIdempotencyKey: input.saved.signInIdempotencyKey } : {}),
       },
       thread: {
         key: input.derived.threadKey,
         spaceId: input.space.id,
+        messageId: input.message.id,
       },
       identity: input.identity,
       ...(input.recognition ? { recognition: input.recognition } : {}),
@@ -264,8 +271,8 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
         // (pk + journey + connectors) is only used when a messageCompleteUrl journey
         // is configured, or the caller passes explicit overrides.
         if (!journeyId && Object.keys(overrides).length === 0) {
-          const origin = (options.signIn?.signInOrigin ?? "https://sign-in.me").replace(/\/+$/, "");
-          return `${origin}/${encodeURIComponent(options.agent)}`;
+          const messageUrl = await messageUrlForContext(ctx, input.derived);
+          return messageUrl?.url ?? plainSignInUrl(options);
         }
         return configure.auth.signInUrl({
           publishableKey: options.publishableKey,
@@ -287,13 +294,113 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
         const url = await ctx.signInUrl();
         const body = await signInMessage(ctx, url, replyOptions.message ?? options.connect?.message);
         await input.message.reply(body);
+        const messageUrl = await messageUrlByContext.get(ctx)?.catch(() => null);
         await options.store.saveSubject(input.derived.subjectKey, {
           externalId: input.derived.externalId,
           signInSentAt: new Date().toISOString(),
+          ...(messageUrl?.mode === "minted" ? {
+            signInExpiresAt: messageUrl.expiresAt,
+            signInIdempotencyKey: messageUrl.idempotencyKey ?? messageUrlIdempotencyKey(ctx, "signin"),
+          } : {
+            signInExpiresAt: null,
+            signInIdempotencyKey: null,
+          }),
         });
       },
     };
     return ctx;
+  }
+
+  function messageUrlForContext(
+    ctx: ConfigureSpectrumContext,
+    derived: Awaited<ReturnType<typeof deriveConfiguredIdentity>>
+  ): Promise<ConfigureSpectrumMessageUrlResult | null> {
+    const mode = options.signIn?.linkMode ?? "plain";
+    if (mode === "plain") return Promise.resolve(null);
+    if (!derived.subjectToken) return Promise.resolve(null);
+
+    const existing = messageUrlByContext.get(ctx);
+    if (existing) return existing;
+
+    const request = {
+      reason: "signin" as const,
+      ctx,
+      subjectToken: derived.subjectToken,
+      connectorIds: connectorIds(options.signIn?.connectors),
+      idempotencyKey: messageUrlIdempotencyKey(ctx, "signin"),
+    };
+    const pending = createMessageUrl(request).catch((error) => {
+      options.logger?.warn?.("configure message URL creation failed; falling back to plain sign-in link", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    });
+    messageUrlByContext.set(ctx, pending);
+    return pending;
+  }
+
+  async function createMessageUrl(request: {
+    reason: "signin" | "reconnect" | "permissions";
+    ctx: ConfigureSpectrumContext;
+    subjectToken?: string;
+    connectorIds?: string[];
+    idempotencyKey: string;
+  }): Promise<ConfigureSpectrumMessageUrlResult> {
+    if (options.signIn?.mintUrl) {
+      return options.signIn.mintUrl(request);
+    }
+
+    const auth = configure.auth as unknown as {
+      createMessageSignInUrl?: (input: {
+        reason: "signin" | "reconnect" | "permissions";
+        channel: string;
+        subject: { key: string; externalId: string; senderId?: string };
+        thread?: { key?: string; spaceId?: string; messageId?: string };
+        subjectToken?: string;
+        connectors?: string[];
+        displayName?: string;
+        agentLogo?: string;
+        theme?: "light" | "dark";
+        returnMode?: "message";
+        idempotencyKey?: string;
+      }) => Promise<ConfigureSpectrumMessageUrlResult>;
+    };
+
+    const payload = messageUrlPayload(request);
+    if (typeof auth.createMessageSignInUrl === "function") {
+      return auth.createMessageSignInUrl(payload);
+    }
+    return postMessageUrl(payload);
+  }
+
+  async function postMessageUrl(payload: {
+    reason: "signin" | "reconnect" | "permissions";
+    channel: string;
+    subject: { key: string; externalId: string; senderId?: string };
+    thread?: { key?: string; spaceId?: string; messageId?: string };
+    subjectToken?: string;
+    connectors?: string[];
+    displayName?: string;
+    agentLogo?: string;
+    theme?: "light" | "dark";
+    returnMode?: "message";
+    idempotencyKey?: string;
+  }): Promise<ConfigureSpectrumMessageUrlResult> {
+    const fetchFn = options.fetch ?? globalThis.fetch;
+    if (typeof fetchFn !== "function") return { mode: "plain", url: plainSignInUrl(options) };
+    const response = await fetchFn(`${(options.baseUrl ?? "https://api.configure.dev").replace(/\/+$/, "")}/v1/auth/sign-in/message-url`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": options.apiKey,
+        "X-Agent": options.agent,
+      },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      throw new Error(`message URL request failed with status ${response.status}`);
+    }
+    return normalizeMessageUrlResult(await response.json());
   }
 
   return { resolve, handle, complete };
@@ -313,12 +420,16 @@ async function deriveConfiguredIdentity(input: ConfigureSpectrumIdentityInput, o
   const externalId = options.identity?.externalId
     ? await options.identity.externalId({ ...input, subjectKey })
     : `spectrum:${subjectKey}`;
+  const subjectToken = options.identity?.subjectToken
+    ? await options.identity.subjectToken(input)
+    : base.subjectToken;
   return {
     ...base,
     subjectKey,
     threadKey,
     externalId,
     phoneCandidates: unique(customPhoneCandidates),
+    ...(subjectToken ? { subjectToken } : {}),
   };
 }
 
@@ -328,11 +439,18 @@ async function shouldConnect(
 ): Promise<boolean> {
   const mode = connect?.mode ?? "manual";
   if (mode === "manual") return false;
-  if (connect?.sendOnce && ctx.subject.signInSentAt) return false;
+  if (connect?.sendOnce && ctx.subject.signInSentAt && signInStillValid(ctx.subject.signInExpiresAt)) return false;
   if (mode === "first-message") return true;
   const intent = connect?.intent ?? DEFAULT_CONNECT_INTENT;
   if (intent instanceof RegExp) return Boolean(ctx.text && intent.test(ctx.text));
   return intent(ctx);
+}
+
+function signInStillValid(expiresAt: string | undefined): boolean {
+  if (!expiresAt) return true;
+  const timestamp = Date.parse(expiresAt);
+  if (Number.isNaN(timestamp)) return true;
+  return timestamp > Date.now();
 }
 
 async function signInMessage(
@@ -370,4 +488,92 @@ function unique(values: string[]): string[] {
     out.push(trimmed);
   }
   return out;
+}
+
+function plainSignInUrl(options: ConfigureSpectrumOptions): string {
+  const origin = (options.signIn?.signInOrigin ?? "https://sign-in.me").replace(/\/+$/, "");
+  return `${origin}/${encodeURIComponent(options.agent)}`;
+}
+
+function connectorIds(connectors: ConfigureSpectrumSignInOptions["connectors"] | undefined): string[] | undefined {
+  if (Array.isArray(connectors)) return connectors.map(String).filter(Boolean);
+  if (typeof connectors === "string") return connectors.split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+function messageUrlIdempotencyKey(ctx: ConfigureSpectrumContext, reason: "signin" | "reconnect" | "permissions"): string {
+  return `${messageKey(ctx.space, ctx.message)}:${reason}`;
+}
+
+function messageUrlPayload(request: {
+  reason: "signin" | "reconnect" | "permissions";
+  ctx: ConfigureSpectrumContext;
+  subjectToken?: string;
+  connectorIds?: string[];
+  idempotencyKey: string;
+}) {
+  return {
+    reason: request.reason,
+    channel: request.ctx.platform,
+    subject: {
+      key: request.ctx.subject.key,
+      externalId: request.ctx.subject.externalId,
+      ...(request.ctx.subject.senderId ? { senderId: request.ctx.subject.senderId } : {}),
+    },
+    thread: {
+      key: request.ctx.thread.key,
+      spaceId: request.ctx.thread.spaceId,
+      ...(request.ctx.thread.messageId ? { messageId: request.ctx.thread.messageId } : {}),
+    },
+    ...(request.subjectToken ? { subjectToken: request.subjectToken } : {}),
+    ...(request.connectorIds && request.connectorIds.length > 0 ? { connectors: request.connectorIds } : {}),
+    ...(request.idempotencyKey ? { idempotencyKey: request.idempotencyKey } : {}),
+    returnMode: "message" as const,
+  };
+}
+
+function normalizeMessageUrlResult(value: unknown): ConfigureSpectrumMessageUrlResult {
+  if (!value || typeof value !== "object") {
+    throw new Error("message URL response was not an object");
+  }
+  const input = value as Record<string, unknown>;
+  const mode = stringValue(input.mode);
+  const url = stringValue(input.url);
+  const idempotencyKey = stringValue(input.idempotencyKey) ?? stringValue(input.idempotency_key);
+  if (!url) throw new Error("message URL response was missing url");
+  if (mode === "minted") {
+    const expiresAt = stringValue(input.expiresAt) ?? stringValue(input.expires_at);
+    if (!expiresAt) throw new Error("minted message URL response was missing expiresAt");
+    return {
+      mode: "minted",
+      url,
+      expiresAt,
+      ...(idempotencyKey ? { idempotencyKey } : {}),
+    };
+  }
+  if (mode === "plain") {
+    const fallbackReason = messageUrlFallbackReason(
+      stringValue(input.fallbackReason) ?? stringValue(input.fallback_reason)
+    );
+    return {
+      mode: "plain",
+      url,
+      ...(fallbackReason ? { fallbackReason } : {}),
+      ...(idempotencyKey ? { idempotencyKey } : {}),
+    };
+  }
+  throw new Error("message URL response had invalid mode");
+}
+
+function messageUrlFallbackReason(value: string | undefined): ConfigureSpectrumMessageUrlFallbackReason | undefined {
+  if (
+    value === "subject_signature_missing" ||
+    value === "subject_signature_invalid" ||
+    value === "subject_signature_unsupported"
+  ) {
+    return value;
+  }
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }

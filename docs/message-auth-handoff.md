@@ -1,6 +1,6 @@
 # Configure Message Auth for Spectrum
 
-Status: implementation handoff
+Status: implementation baseline
 Owner: Configure
 Scope: `@configure-ai/spectrum-ts`, Configure quickstart message agent, Configure backend sign-in APIs, and the TypeScript SDK
 
@@ -28,18 +28,20 @@ The code is an opaque, short-lived Configure record. It is not a token, not a ph
 
 ## Current State
 
-As of this spec, the visible repos expose:
+As of this implementation baseline, the repos expose:
 
 - `ctx.signInUrl()` in `@configure-ai/spectrum-ts`
 - clean plain links for the no-completion message flow
 - verbose SDK URLs when `messageCompleteUrl` or explicit URL overrides are present
 - `configure.auth.signInUrl()`
+- `configure.auth.createMessageSignInUrl()`
 - `POST /v1/auth/sign-in/code`
 - `POST /v1/auth/sign-in/exchange`
+- `POST /v1/auth/sign-in/message-url`
 - `POST /v1/auth/sign-in/recognize-phone`
 - `POST /v1/auth/sign-in/validate`
 
-The visible repos do not yet expose a message URL endpoint or SDK method. This spec defines the Configure-owned API and adapter work needed to implement it.
+The message URL endpoint currently implements the conservative preview behavior: it validates the request, audits the attempt, and returns `mode: "plain"` until Photon signature verification is configured. It must not create `sign-in.me/{agent}/{code}` links without verified Photon-signed subject evidence.
 
 ## Goals
 
@@ -621,9 +623,10 @@ Status: complete for the current plain-link path.
 
 Backend:
 
-- Add `message_sign_in_links` migration.
-- Add `POST /v1/auth/sign-in/message-url`.
-- Add code hashing, expiry, idempotency, audit events, and rate limits for `mode: "minted"` responses.
+- Add `message_sign_in_links` migration. **Baseline complete.**
+- Add `POST /v1/auth/sign-in/message-url`. **Baseline complete.**
+- Validate request shape, require `sk_`, audit attempts, and return `mode: "plain"` while signature verification is unavailable. **Baseline complete.**
+- Add code hashing, expiry, idempotency, audit events, and rate limits for `mode: "minted"` responses. **Remaining for signed-subject phase.**
 - Add a Photon signature verification boundary. Until Photon key discovery and claim format are configured, the endpoint should always return `mode: "plain"`.
 - Require a verified Photon signature before generating `sign-in.me/{agent}/{code}`.
 - Return `mode: "plain"` and create no code record when the Photon signature is missing, invalid, or unsupported.
@@ -632,24 +635,24 @@ Backend:
 
 TypeScript SDK:
 
-- Add `auth.createMessageSignInUrl()`.
-- Export request/response types.
-- Document server-side secret-key requirement.
+- Add `auth.createMessageSignInUrl()`. **Baseline complete.**
+- Export request/response types. **Baseline complete.**
+- Document server-side secret-key requirement. **Baseline complete.**
 
 Spectrum adapter:
 
-- Add internal URL provider.
-- Add `signIn.linkMode`.
-- Add optional `signIn.mintUrl` provider for private preview.
-- Route `ctx.signInUrl()` through the provider.
-- Ensure `ctx.signInUrl()` never emits a code-bearing magic link without verified Photon-signed subject evidence.
-- Add `signInExpiresAt` and `signInIdempotencyKey` store fields.
-- Make `sendOnce` expiry-aware.
+- Add internal URL provider. **Baseline complete.**
+- Add `signIn.linkMode`. **Baseline complete.**
+- Add optional `signIn.mintUrl` provider for private preview. **Baseline complete.**
+- Route `ctx.signInUrl()` through the provider. **Baseline complete.**
+- Ensure `ctx.signInUrl()` never emits a code-bearing magic link without verified Photon-signed subject evidence. **Baseline complete.**
+- Add `signInExpiresAt` and `signInIdempotencyKey` store fields. **Baseline complete.**
+- Make `sendOnce` expiry-aware. **Baseline complete.**
 
 Quickstart:
 
 - Keep plain flow by default until backend is deployed.
-- Add a note or option showing `linkMode: "auto"` after the API is available.
+- Add a note or option showing `linkMode: "auto"` after the API is available. **Baseline complete in adapter docs; quickstart update depends on refreshed tarball.**
 - Refresh vendored tarball after adapter changes.
 
 ### Phase 3: Signed Subject Extraction And Recognition
