@@ -17,6 +17,10 @@ const configureSpectrum = withConfigure({
     displayName: "Your Agent",
     agentPhone: process.env.AGENT_PHONE_NUMBER,
   },
+  connect: {
+    mode: "intent",
+    sendOnce: true,
+  },
 });
 
 for await (const [space, message] of app.messages) {
