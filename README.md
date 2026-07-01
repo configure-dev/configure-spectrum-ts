@@ -36,13 +36,13 @@ For deployable preview apps, commit the tarball in the consuming repo and refere
 ## Existing Handler
 
 ```ts
-import { inMemoryStore, withConfigure } from "@configure-ai/spectrum-ts";
+import { withConfigure } from "@configure-ai/spectrum-ts";
 
 const configureSpectrum = withConfigure({
   apiKey: process.env.CONFIGURE_API_KEY!,
   publishableKey: process.env.CONFIGURE_PUBLISHABLE_KEY!,
   agent: process.env.CONFIGURE_AGENT!,
-  store: inMemoryStore(), // Process-local. Use a durable store in production.
+  store: withConfigure.localStore(), // Process-local adapter state. Use a durable store in production.
   connect: {
     mode: "intent",
     sendOnce: true,
@@ -69,6 +69,8 @@ for await (const [space, message] of app.messages) {
 `ctx.profile` is built from a linked Configure token when one is available, or from a developer-scoped external user before sign-in. That lets the rest of your agent use one profile runtime while Configure enforces the appropriate access boundary.
 
 When `connect` sends a hosted link, `handle()` returns before the handler runs. The model does not need to decide when to produce Configure sign-in URLs.
+
+`store` persists adapter state between messages: sender mappings, approved Configure tokens, sign-in delivery state, completion journeys, and webhook idempotency. It does not store Configure user memories or profile data. For local development and examples, `withConfigure.localStore()` keeps that state in the current process. Production apps should pass a durable `ConfigureSpectrumStore`.
 
 For the design rationale and minting/reconnect implementation plan, see [Message Auth Handoff Spec](docs/message-auth-handoff.md).
 

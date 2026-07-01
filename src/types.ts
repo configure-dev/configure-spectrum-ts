@@ -173,3 +173,8 @@ export interface ConfigureSpectrum {
   ): Promise<ConfigureSpectrumHandleResult>;
   complete(input: ConfigureSpectrumCompleteInput): Promise<ConfigureSpectrumCompleteResult>;
 }
+
+export interface ConfigureSpectrumFactory {
+  (options: ConfigureSpectrumOptions): ConfigureSpectrum;
+  localStore(): ConfigureSpectrumStore;
+}

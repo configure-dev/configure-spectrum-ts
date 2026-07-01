@@ -1,8 +1,8 @@
 export { withConfigure } from "./adapter.js";
-export { inMemoryStore } from "./store.js";
 
 export type {
   ConfigureSpectrum,
+  ConfigureSpectrumFactory,
   ConfigureSpectrumCompleteInput,
   ConfigureSpectrumCompleteResult,
   ConfigureSpectrumConnectMode,

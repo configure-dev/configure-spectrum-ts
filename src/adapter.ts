@@ -3,12 +3,14 @@ import { Configure } from "configure";
 import type { SignInTokenValidationResult } from "configure";
 import type { Message, Space } from "spectrum-ts";
 import { deriveIdentity, messageKey, reconnectUrl, textFromMessage } from "./identity.js";
+import { localStore } from "./store.js";
 import type {
   ConfigureSpectrum,
   ConfigureSpectrumCompleteInput,
   ConfigureSpectrumCompleteResult,
   ConfigureSpectrumConnectOptions,
   ConfigureSpectrumContext,
+  ConfigureSpectrumFactory,
   ConfigureSpectrumHandleResult,
   ConfigureSpectrumIdentityInput,
   ConfigureSpectrumOptions,
@@ -19,7 +21,7 @@ import type {
 
 const DEFAULT_CONNECT_INTENT = /\b(connect|link|sign[\s-]?in|log[\s-]?in|login)\b/i;
 
-export function withConfigure(options: ConfigureSpectrumOptions): ConfigureSpectrum {
+function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectrum {
   assertRequired(options.apiKey, "apiKey");
   assertRequired(options.publishableKey, "publishableKey");
   assertRequired(options.agent, "agent");
@@ -296,6 +298,10 @@ export function withConfigure(options: ConfigureSpectrumOptions): ConfigureSpect
 
   return { resolve, handle, complete };
 }
+
+export const withConfigure: ConfigureSpectrumFactory = Object.assign(createWithConfigure, {
+  localStore,
+});
 
 async function deriveConfiguredIdentity(input: ConfigureSpectrumIdentityInput, options: ConfigureSpectrumOptions) {
   const base = await deriveIdentity(input);

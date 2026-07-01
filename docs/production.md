@@ -6,7 +6,9 @@ Use a durable store for subject records, Configure tokens, sign-in journeys, and
 
 Implement the `ConfigureSpectrumStore` interface against your database.
 
-`inMemoryStore()` is for local development and tests. It is process-local, so subject records, tokens, sign-in journeys, and idempotency claims are lost on restart.
+`withConfigure.localStore()` is for local development and tests. It is process-local, so subject records, tokens, sign-in journeys, and idempotency claims are lost on restart.
+
+This store only persists adapter state. It does not store Configure user memories or profile data; Configure stores those in the user's Memory Profile.
 
 `saveSubject()` is an upsert/merge operation. A patch that updates `signInSentAt` must not erase an existing `configureToken`, and a patch that saves a token must preserve the subject's stable `externalId`.
 
