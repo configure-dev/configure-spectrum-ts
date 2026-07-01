@@ -212,6 +212,75 @@ describe("withConfigure", () => {
     await expect(ctx.signInUrl()).resolves.toBe("https://sign-in.me/test-agent");
   });
 
+  it("builds targeted reconnect links with hosted message return metadata", async () => {
+    const store = withConfigure.localStore();
+    const configureSpectrum = withConfigure({
+      ...baseOptions,
+      store,
+      signIn: {
+        agentPhone: "+14155550000",
+        messageBody: "done!",
+      },
+    });
+    const ctx = await configureSpectrum.resolve(space(), message());
+    const url = new URL(await ctx.reconnectUrl({ connectors: ["gmail"] }));
+
+    expect(url.origin + url.pathname).toBe("https://sign-in.me/test-agent/reconnect");
+    expect(url.searchParams.get("connectors")).toBe("gmail");
+    expect(url.searchParams.get("delivery")).toBe("message");
+    expect(url.searchParams.get("message_line_phone")).toBe("+14155550000");
+    expect(url.searchParams.get("message_body")).toBe("done!");
+  });
+
+  it("uses the message URL API for reconnect in auto mode when signed subject evidence exists", async () => {
+    const store = withConfigure.localStore();
+    const fetch = jsonFetch(({ pathname, body }) => {
+      expect(pathname).toBe("/v1/auth/sign-in/message-url");
+      expect(body).toMatchObject({
+        reason: "reconnect",
+        channel: "slack",
+        subject: {
+          key: "subject-1",
+          externalId: "spectrum:subject-1",
+          senderId: "slack-user",
+        },
+        subjectToken: "photon.signed.subject",
+        connectors: ["gmail"],
+        messageLinePhone: "+14155550000",
+        messageBody: "done!",
+        returnMode: "message",
+      });
+      return {
+        mode: "plain",
+        url: "https://sign-in.me/test-agent/reconnect?connectors=gmail",
+        fallbackReason: "subject_signature_unsupported",
+      };
+    });
+    const configureSpectrum = withConfigure({
+      ...baseOptions,
+      store,
+      fetch,
+      signIn: {
+        linkMode: "auto",
+        agentPhone: "+14155550000",
+        messageBody: "done!",
+      },
+      identity: {
+        subjectKey: () => "subject-1",
+        externalId: () => "spectrum:subject-1",
+        subjectToken: () => "photon.signed.subject",
+      },
+    });
+    const inbound = message({ sender: { id: "slack-user" }, platform: "slack" });
+    const ctx = await configureSpectrum.resolve(space(), inbound);
+
+    await ctx.replyWithReconnect({ connectors: ["gmail"], message: "Reconnect Gmail: {url}" });
+
+    expect(inbound.reply).toHaveBeenCalledWith(
+      "Reconnect Gmail: https://sign-in.me/test-agent/reconnect?connectors=gmail"
+    );
+  });
+
   it("stores message URL expiry when a code-bearing sign-in link is sent", async () => {
     const store = withConfigure.localStore();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();

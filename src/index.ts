@@ -20,6 +20,7 @@ export type {
   ConfigureSpectrumMessageUrlRequest,
   ConfigureSpectrumMessageUrlResult,
   ConfigureSpectrumOptions,
+  ConfigureSpectrumReconnectOptions,
   ConfigureSpectrumSignInMessage,
   ConfigureSpectrumSignInOptions,
   ConfigureSpectrumStore,

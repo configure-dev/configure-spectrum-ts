@@ -50,6 +50,11 @@ export interface ConfigureSpectrumConnectOptions {
   message?: ConfigureSpectrumSignInMessage;
 }
 
+export interface ConfigureSpectrumReconnectOptions {
+  connectors?: ConnectorName[] | string[] | string;
+  message?: ConfigureSpectrumSignInMessage;
+}
+
 export interface ConfigureSpectrumIdentityInput {
   space: Space;
   message: Message;
@@ -178,10 +183,11 @@ export interface ConfigureSpectrumContext {
   profile: ProfileRuntime;
 
   signInUrl(options?: Partial<SignInUrlOptions>): Promise<string>;
-  reconnectUrl(): string;
+  reconnectUrl(options?: Omit<ConfigureSpectrumReconnectOptions, "message">): Promise<string>;
   replyWithSignIn(options?: {
     message?: ConfigureSpectrumSignInMessage;
   }): Promise<void>;
+  replyWithReconnect(options?: ConfigureSpectrumReconnectOptions): Promise<void>;
 }
 
 export interface ConfigureSpectrumCompleteInput {
