@@ -16,9 +16,9 @@ The current adapter already supports the plain message flow:
 https://sign-in.me/{agent}
 ```
 
-That path is the working fallback today, but it depends on phone-backed sender evidence after sign-in. To support cleaner Spectrum handoffs and channel-local subjects, Configure should own a message URL API that can mint message-bound links when Photon provides signed subject evidence.
+That path is the working fallback today, but it depends on phone-backed sender evidence after sign-in. To support cleaner Spectrum handoffs and channel-local subjects, Configure should own a message URL API that can return code-bearing links when Photon provides signed subject evidence.
 
-The target minted URL shape is:
+The target code-bearing URL shape is:
 
 ```txt
 https://sign-in.me/{agent}/{code}
@@ -39,7 +39,7 @@ As of this spec, the visible repos expose:
 - `POST /v1/auth/sign-in/recognize-phone`
 - `POST /v1/auth/sign-in/validate`
 
-The visible repos do not yet expose a message URL minting endpoint or SDK method. This spec defines the Configure-owned API and adapter work needed to implement it.
+The visible repos do not yet expose a message URL endpoint or SDK method. This spec defines the Configure-owned API and adapter work needed to implement it.
 
 ## Goals
 
@@ -48,7 +48,7 @@ The visible repos do not yet expose a message URL minting endpoint or SDK method
 - Send hosted sign-in links outside the model hot path.
 - Support the current plain `sign-in.me/{agent}` handoff as a fallback.
 - Add a Configure-owned message URL API for message handoffs.
-- Reserve reconnect and permission-review behavior for the same URL minting surface.
+- Reserve reconnect and permission-review behavior for the same message URL surface.
 - Require verified Photon-signed subject evidence for code-bearing message links.
 - Continue to work without Photon-signed subject evidence by returning or building the plain sign-in fallback.
 - Keep prompt/guidance injection as a nudge only, not as the auth enforcement mechanism.
@@ -61,7 +61,7 @@ The visible repos do not yet expose a message URL minting endpoint or SDK method
 - Do not require the model to call a tool to get the sign-in link.
 - Do not expose Configure secret keys, agent tokens, raw phone candidates, or signed Photon claims to the model.
 - Do not require new infrastructure from Spectrum developers just to use the adapter.
-- Do not build a separate reconnect protocol if reconnect can be represented by the same hosted URL minting surface.
+- Do not build a separate reconnect protocol if reconnect can be represented by the same hosted message URL surface.
 
 ## Target Developer Experience
 
@@ -111,7 +111,7 @@ const store = withConfigure.localStore();
 
 Production apps should back the store with their normal server-side persistence. The store persists adapter state only: sender mappings, approved Configure tokens, sign-in delivery state, completion journeys, and webhook idempotency. It does not store Configure user memories or profile data.
 
-After the message URL minting API lands, apps can opt into message-bound links without changing their handler:
+After the message URL API lands, apps can opt into message-bound links without changing their handler:
 
 ```ts
 const configureSpectrum = withConfigure({
@@ -125,7 +125,7 @@ const configureSpectrum = withConfigure({
 });
 ```
 
-`auto` should prefer message-bound minted URLs when the backend and SDK support them, then fall back to the current plain `sign-in.me/{agent}` flow.
+`auto` should prefer a code-bearing message URL only when the backend, SDK, and verified Photon-signed subject evidence are all available. Otherwise it should fall back to the current plain `sign-in.me/{agent}` flow.
 
 ## Control-Plane Flow
 
@@ -180,7 +180,7 @@ type ConnectorIssue = {
 
 The current adapter represents most of this through `ctx.linked`, `ctx.recognized`, `ctx.approved`, `ctx.identity`, and `ctx.recognition`. Reconnect and signed-subject recognition are future work.
 
-## Configure URL Minting API
+## Configure Message URL API
 
 ### Endpoint
 
@@ -232,8 +232,8 @@ Notes:
 - `subject.externalId` is the developer-scoped fallback external id, such as `spectrum:sp_...`.
 - `subjectToken` is the Photon-signed subject token when Spectrum exposes one. It is server-side only and must not be sent to the model.
 - A code-bearing `mode: "minted"` response requires a present and verified `subjectToken`. If it is absent or invalid, the endpoint should return `mode: "plain"` with `fallbackReason` and no `code`.
-- Do not put raw phone numbers in the minted URL.
-- Phone candidates, if needed for recognition, should remain part of recognition APIs rather than the URL minting request.
+- Do not put raw phone numbers in the code-bearing URL.
+- Phone candidates, if needed for recognition, should remain part of recognition APIs rather than the message URL request.
 
 ### Response
 
@@ -259,7 +259,7 @@ type CreateMessageSignInUrlResponse =
     };
 ```
 
-The minted response URL should be:
+The code-bearing response URL should be:
 
 ```txt
 https://sign-in.me/{agent}/{code}
@@ -277,7 +277,7 @@ The plain response is not a magic link. It exists so callers can keep one messag
 
 ### Backend Storage
 
-Add a table for minted message links. Suggested name:
+Add a table for code-bearing message links. Suggested name:
 
 ```sql
 create table message_sign_in_links (
@@ -320,9 +320,10 @@ Use a hash of the code at rest, following the existing sign-in return-code patte
 
 Recommended defaults:
 
-- TTL: 10 minutes for minted message links.
-- Idempotency: if the same `(developer, agent, idempotencyKey)` has an unexpired link with the same reason and subject, return the existing URL.
-- If the previous link is expired, mint a replacement.
+- TTL: 10 minutes for code-bearing message links.
+- Idempotency: if the same `(developer, agent, idempotencyKey)` has an unexpired code-bearing link with the same reason and subject, return the existing URL.
+- If the previous code-bearing link is expired, create a replacement.
+- Plain fallback responses do not create code rows. They may echo the idempotency key for caller correlation, but they should not consume the code-link idempotency namespace.
 - Expired links should render a hosted "link expired" state with a safe instruction to message the agent again.
 
 ### Hosted Surface
@@ -358,7 +359,7 @@ When available, Configure should verify the subject token server-side and treat 
 
 If the signed subject token identifies a federated Configure user that already approved the agent, the hosted page can skip OTP and go directly to consent/success as appropriate.
 
-If the signed subject token only identifies a channel-local subject, it can bind the minted link to the message subject and help future recognition, but it must not grant cross-agent profile access by itself.
+If the signed subject token only identifies a channel-local subject, it can bind the code-bearing link to the message subject and help future recognition, but it must not grant cross-agent profile access by itself.
 
 ## TypeScript SDK
 
@@ -428,7 +429,7 @@ This method is server-side only because it uses the secret key.
 
 ## Spectrum Adapter Changes
 
-Add a single internal URL provider so plain, completion, and minted flows share one path:
+Add a single internal URL provider so plain, completion, and message-bound flows share one path:
 
 ```ts
 type ConfigureSpectrumUrlProvider = (input: ConfigureSpectrumUrlRequest) =>
@@ -461,7 +462,7 @@ const configureSpectrum = withConfigure({
   agent,
   store,
   signIn: {
-    linkMode: "minted", // "plain" | "minted" | "auto"
+    linkMode: "auto", // "plain" | "minted" | "auto"
   },
 });
 ```
@@ -469,8 +470,8 @@ const configureSpectrum = withConfigure({
 Recommended behavior:
 
 - `plain`: current `https://sign-in.me/{agent}` behavior.
-- `minted`: call `configure.auth.createMessageSignInUrl()` only when a Photon-signed subject token is available; otherwise return the plain fallback unless a future strict option is added.
-- `auto`: use a minted response only when the SDK/backend supports it and verified Photon-signed subject evidence is available; otherwise fall back to plain.
+- `auto`: call `configure.auth.createMessageSignInUrl()` only when the SDK/backend supports it and a Photon-signed subject token is available; use `mode: "minted"` responses when verification succeeds and plain fallback otherwise.
+- `minted`: private-preview/debug mode that requests the message URL API when a subject token is available. It must still accept `mode: "plain"` fallback responses and must never force a code-bearing URL without verified Photon-signed subject evidence.
 
 The adapter should still support a custom provider for private preview testing:
 
@@ -492,7 +493,7 @@ const configureSpectrum = withConfigure({
 
 ## Adapter Store Changes
 
-Minted URLs that include `expiresAt` must not be blocked forever by a previous `signInSentAt`. Add fields:
+Code-bearing message URLs that include `expiresAt` must not be blocked forever by a previous `signInSentAt`. Add fields:
 
 ```ts
 interface ConfigureSpectrumSubject {
@@ -511,21 +512,24 @@ interface ConfigureSpectrumSubjectContext {
 
 > Send at most one still-valid link for this subject and reason.
 
-For plain links, `signInExpiresAt` can remain absent and current behavior is preserved. For minted links, `shouldConnect()` should allow another link when `signInExpiresAt` is in the past.
+For plain links, `signInExpiresAt` can remain absent and current behavior is preserved. For code-bearing links, `shouldConnect()` should allow another link when `signInExpiresAt` is in the past.
 
 ## Reconnect
 
-Reconnect should use the same hosted URL minting path:
+Reconnect should use the same message URL path:
 
 ```ts
 await configure.auth.createMessageSignInUrl({
   reason: "reconnect",
   channel,
   subject,
+  subjectToken,
   connectors: ["gmail"],
   idempotencyKey,
 });
 ```
+
+If `subjectToken` is absent or cannot be verified, the response should be `mode: "plain"` and the hosted surface should fall back to normal sign-in/reconnect handling without a magic code.
 
 Reconnect signals:
 
@@ -539,15 +543,15 @@ When reconnect is detected, the adapter should send a hosted reconnect link and 
 
 Reconnect can initially fall back to normal sign-in copy if hosted reconnect-specific UI is not ready. The API should still reserve `reason: "reconnect"` and `connectors` now.
 
-## Recognition And Minting
+## Recognition And URL Creation
 
-Recognition/state and URL minting should remain separate backend primitives.
+Recognition/state and message URL creation should remain separate backend primitives.
 
 Recognition answers:
 
 > What is true about this sender?
 
-Minting answers:
+URL creation answers:
 
 > Create a user-facing hosted URL for this sender and action.
 
@@ -578,7 +582,7 @@ The quickstart should continue to:
 - avoid putting `ctx.signInUrl()` in model/system prompt text
 - use `ctx.linked || profileHasData(profile)` before including profile context
 - document that the current plain link flow depends on phone-backed sender evidence
-- switch to minted URLs once the backend/SDK method exists
+- switch to the message URL API once the backend/SDK method exists, while keeping code-bearing links gated on verified Photon signatures
 
 The model prompt should describe only the agent's behavior and available context:
 
@@ -594,11 +598,11 @@ const system = ctx.linked || profileHasData(profile)
 - Keep `sk_` keys server-side.
 - Keep Configure agent tokens server-side.
 - Do not pass signed Photon claims to the model.
-- Do not log raw phone candidates, tokens, full webhook headers, full message bodies, or minted URL codes.
+- Do not log raw phone candidates, tokens, full webhook headers, full message bodies, or message URL codes.
 - Treat recognition as identity evidence, not authorization.
 - Treat `ctx.linked` as the approved-token signal.
-- Use idempotency keys for webhook retries and URL minting.
-- Keep link minting audited and rate-limited.
+- Use idempotency keys for webhook retries and message URL creation.
+- Keep code-bearing link creation audited and rate-limited.
 - Store only code hashes, not raw codes.
 - Do not reveal federated or cross-agent profile contents before approval. Developer-scoped unlinked context can still be used under Configure's normal unlinked-user boundary.
 
@@ -613,13 +617,14 @@ const system = ctx.linked || profileHasData(profile)
 
 Status: complete for the current plain-link path.
 
-### Phase 2: Configure Message URL Minting
+### Phase 2: Configure Message URL API
 
 Backend:
 
 - Add `message_sign_in_links` migration.
 - Add `POST /v1/auth/sign-in/message-url`.
 - Add code hashing, expiry, idempotency, audit events, and rate limits for `mode: "minted"` responses.
+- Add a Photon signature verification boundary. Until Photon key discovery and claim format are configured, the endpoint should always return `mode: "plain"`.
 - Require a verified Photon signature before generating `sign-in.me/{agent}/{code}`.
 - Return `mode: "plain"` and create no code record when the Photon signature is missing, invalid, or unsupported.
 - Add hosted lookup/completion handling for `sign-in.me/{agent}/{code}`.
@@ -644,21 +649,20 @@ Spectrum adapter:
 Quickstart:
 
 - Keep plain flow by default until backend is deployed.
-- Add a note or option showing `linkMode: "minted"` after the API is available.
+- Add a note or option showing `linkMode: "auto"` after the API is available.
 - Refresh vendored tarball after adapter changes.
 
-### Phase 3: Signed Subject Tokens
+### Phase 3: Signed Subject Extraction And Recognition
 
 - Confirm Photon signed subject token location in Spectrum objects.
 - Add adapter extraction with safe defaults.
-- Add backend verification and tests for Photon-signed subject tokens.
 - Add recognition path from signed subject token.
 - Allow OTP bypass only when token verification and existing Configure session/user binding are sound.
 
 ### Phase 4: Reconnect
 
 - Add typed reconnect detection around Configure connector/tool failures.
-- Mint reconnect URLs with `reason: "reconnect"` and connector metadata.
+- Create reconnect URLs with `reason: "reconnect"` and connector metadata.
 - Send reconnect links through Spectrum and stop the turn under auto policy.
 
 ### Phase 5: Guidance
@@ -672,13 +676,14 @@ Quickstart:
 Backend tests:
 
 - `POST /v1/auth/sign-in/message-url` requires `sk_`.
-- `pk_` cannot mint URLs.
+- `pk_` cannot call the message URL endpoint.
 - Missing subject key/external id fails validation.
 - Missing Photon signature returns a plain fallback response and creates no message-link row.
-- Invalid Photon signature returns a plain fallback response or typed failure and creates no message-link row.
-- Valid Photon signature is required for a code-bearing minted response.
-- Idempotency returns the same unexpired link.
-- Expired idempotent link is replaced.
+- Invalid Photon signature returns `mode: "plain"` with `fallbackReason: "subject_signature_invalid"` and creates no message-link row.
+- Valid Photon signature is required for a code-bearing `mode: "minted"` response.
+- Idempotency returns the same unexpired code-bearing link.
+- Expired idempotent code-bearing link is replaced.
+- Plain fallback responses do not create code rows or block a later signed request with the same idempotency key.
 - Code hash is stored; raw code is not.
 - Hosted lookup rejects expired/unknown codes.
 - Hosted lookup rejects agent/code mismatch.
@@ -694,8 +699,8 @@ Adapter tests:
 
 - plain flow still returns `https://sign-in.me/{agent}` without query params
 - `sendOnce` suppresses a second plain link
-- minted provider is called for `linkMode: "minted"`
-- minted result stores `signInExpiresAt`
+- message URL provider is called only when policy and subject evidence allow it
+- `mode: "minted"` result stores `signInExpiresAt`
 - plain fallback result does not store `signInExpiresAt` as a magic-link expiry
 - expired `signInExpiresAt` permits a replacement link
 - unexpired `signInExpiresAt` suppresses duplicate links
@@ -713,10 +718,10 @@ Quickstart tests:
 - The model is not given a sign-in URL in its system prompt.
 - Plain message sign-in works without Photon signed-token support.
 - Magic-code links are never generated without verified Photon-signed subject evidence.
-- Minted URLs can be introduced without changing the developer's handler.
-- Reconnect has a reserved URL minting shape.
+- Code-bearing message URLs can be introduced without changing the developer's handler.
+- Reconnect has a reserved message URL shape.
 - Guidance injection is documented as a nudge, not the auth mechanism.
-- URL minting is auditable, rate-limited, idempotent, and short-lived.
+- Code-bearing URL creation is auditable, rate-limited, idempotent, and short-lived.
 
 ## Handoff Checklist
 
@@ -727,7 +732,7 @@ Before implementation starts, confirm:
 - Message link TTL.
 - Rate-limit bucket and audit event names.
 - Whether initial reconnect falls back to normal sign-in UI or gets dedicated hosted copy.
-- Whether Photon signed subject token support is included in the first backend pass or reserved for the next pass.
+- Final Photon signature contract: issuer, audience, key discovery, claim names, and accepted channels.
 - Where Spectrum exposes signed subject tokens once Photon ships them.
 - Whether quickstart should stay on the vendored tarball until preview publish, or consume a local packed tarball from the adapter repo.
 
