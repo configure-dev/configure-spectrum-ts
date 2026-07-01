@@ -107,6 +107,8 @@ Recognition is not authorization. Treat `ctx.linked` as the signal that Configur
 - `ctx.recognized` - true when Configure recognized sender evidence, even if the user has not approved this agent yet.
 - `ctx.signInUrl()` - hosted message sign-in link for the current sender.
 - `ctx.replyWithSignIn()` - convenience method for sending the hosted link in-thread.
+- `ctx.reconnectUrl({ connectors })` - hosted reconnect link for refreshing a specific app connection.
+- `ctx.replyWithReconnect({ connectors })` - convenience method for sending a reconnect link in-thread.
 - `ctx.subject` and `ctx.thread` - stable keys for subject storage and thread-level app state.
 
 ## Sign-In Handoff
@@ -142,6 +144,18 @@ if (!ctx.linked && needsPersonalData(ctx)) {
   return;
 }
 ```
+
+When a Configure-backed tool reports that provider access needs to be refreshed, send a targeted reconnect link from application code:
+
+```ts
+await ctx.replyWithReconnect({
+  connectors: ["gmail"],
+  message: "Reconnect Gmail so I can keep helping with email: {url}",
+});
+return;
+```
+
+Reconnect links use the same hosted surface as sign-in, but they only refresh the requested app connection. In `linkMode: "auto"`, the adapter asks Configure to mint a message URL when signed Spectrum subject evidence is available; otherwise it falls back to the plain hosted reconnect URL.
 
 ## Webhook Composition
 

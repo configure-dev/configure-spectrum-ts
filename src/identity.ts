@@ -55,8 +55,27 @@ export function messageKey(space: Space, message: Message): string {
   return `${message.platform}:${space.id}:${message.id}`;
 }
 
-export function reconnectUrl(agent: string): string {
-  return `https://sign-in.me/${encodeURIComponent(agent)}/reconnect`;
+export interface ReconnectUrlOptions {
+  origin?: string;
+  connectors?: string[];
+  messageLinePhone?: string;
+  messageBody?: string;
+}
+
+export function reconnectUrl(agent: string, options: ReconnectUrlOptions = {}): string {
+  const origin = (options.origin ?? "https://sign-in.me").replace(/\/+$/, "");
+  const url = new URL(`${origin}/${encodeURIComponent(agent)}/reconnect`);
+  if (options.connectors && options.connectors.length > 0) {
+    url.searchParams.set("connectors", options.connectors.join(","));
+  }
+  if (options.messageLinePhone) {
+    url.searchParams.set("delivery", "message");
+    url.searchParams.set("message_line_phone", options.messageLinePhone);
+  }
+  if (options.messageBody) {
+    url.searchParams.set("message_body", options.messageBody);
+  }
+  return url.toString();
 }
 
 function phoneBackedPlatform(platform: string): boolean {
