@@ -1,10 +1,12 @@
 # Production Notes
 
-Use a durable store for subject records, Configure tokens, sign-in journeys, and webhook idempotency.
+Persist adapter state with the same storage layer your app already uses for server-side state.
 
 ## Store
 
-Implement the `ConfigureSpectrumStore` interface against your database.
+Implement the `ConfigureSpectrumStore` interface with your app's normal persistence layer.
+
+No special infrastructure is required. The store is a small server-side adapter for subject records, Configure tokens, sign-in journeys, and webhook idempotency.
 
 `withConfigure.localStore()` is for local development and tests. It is process-local, so subject records, tokens, sign-in journeys, and idempotency claims are lost on restart.
 

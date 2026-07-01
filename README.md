@@ -37,12 +37,13 @@ For deployable preview apps, commit the tarball in the consuming repo and refere
 
 ```ts
 import { withConfigure } from "@configure-ai/spectrum-ts";
+import { adapterStore } from "./configure-spectrum-store";
 
 const configureSpectrum = withConfigure({
   apiKey: process.env.CONFIGURE_API_KEY!,
   publishableKey: process.env.CONFIGURE_PUBLISHABLE_KEY!,
   agent: process.env.CONFIGURE_AGENT!,
-  store: withConfigure.localStore(), // Process-local adapter state. Use a durable store in production.
+  store: adapterStore,
   connect: {
     mode: "intent",
     sendOnce: true,
@@ -70,7 +71,15 @@ for await (const [space, message] of app.messages) {
 
 When `connect` sends a hosted link, `handle()` returns before the handler runs. The model does not need to decide when to produce Configure sign-in URLs.
 
-`store` persists adapter state between messages: sender mappings, approved Configure tokens, sign-in delivery state, completion journeys, and webhook idempotency. It does not store Configure user memories or profile data. For local development and examples, `withConfigure.localStore()` keeps that state in the current process. Production apps should pass a durable `ConfigureSpectrumStore`.
+`store` persists adapter state between messages: sender mappings, approved Configure tokens, sign-in delivery state, completion journeys, and webhook idempotency. It does not store Configure user memories or profile data. Most apps back this with the same persistence they already use for sessions, users, or webhook idempotency.
+
+For local development and examples:
+
+```ts
+const store = withConfigure.localStore();
+```
+
+`withConfigure.localStore()` keeps adapter state in the current process. It resets when the worker restarts.
 
 For the design rationale and minting/reconnect implementation plan, see [Message Auth Handoff Spec](docs/message-auth-handoff.md).
 
@@ -166,7 +175,7 @@ server.use(
 ## Production Checklist
 
 - Use Spectrum's webhook adapters for webhook verification and raw body handling.
-- Provide a durable `store` implementation for subject records and Configure tokens.
+- Provide a `store` implementation backed by your app's normal persistence layer.
 - Implement `claimMessage()` for webhook idempotency.
 - Implement `saveJourney()` and `consumeJourney()` before setting `messageCompleteUrl`.
 - Choose a stored-token validation policy and document it.
