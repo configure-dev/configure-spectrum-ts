@@ -70,6 +70,8 @@ for await (const [space, message] of app.messages) {
 
 When `connect` sends a hosted link, `handle()` returns before the handler runs. The model does not need to decide when to produce Configure sign-in URLs.
 
+For the design rationale and minting/reconnect implementation plan, see [Message Auth Handoff Spec](docs/message-auth-handoff.md).
+
 ## How Resolution Works
 
 For each message, the adapter:

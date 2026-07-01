@@ -322,7 +322,7 @@ That is a product choice, not a model instruction.
 - Treat `ctx.linked` as the approved-token signal.
 - Use idempotency keys for webhook retries and URL minting.
 - Keep link minting audited and rate-limited.
-- Do not reveal profile contents before approval.
+- Do not reveal federated or cross-agent profile contents before approval. Developer-scoped unlinked context can still be used under Configure's normal unlinked-user boundary.
 
 ## Implementation Phases
 
@@ -333,6 +333,8 @@ That is a product choice, not a model instruction.
 - Remove sign-in URL injection from the model prompt.
 - Keep `connect.mode` defaulting to `manual` in the package.
 
+Status: complete for the current plain-link path.
+
 ### Phase 2: URL Minting API Integration
 
 - Add an internal adapter URL provider that can call Jon's minting API.
@@ -340,6 +342,68 @@ That is a product choice, not a model instruction.
 - Route plain, completion, and minted flows through one internal abstraction.
 - Add idempotency support when minting links.
 - Track minted URL expiration so `sendOnce` does not suppress replacement links after expiry.
+
+Recommended implementation shape:
+
+```ts
+type ConfigureSpectrumUrlProvider = (input: ConfigureSpectrumUrlRequest) =>
+  Promise<ConfigureSpectrumUrlResult>;
+
+type ConfigureSpectrumUrlRequest = {
+  reason: "signin" | "reconnect" | "permissions";
+  ctx: ConfigureSpectrumContext;
+  connectorIds?: string[];
+};
+
+type ConfigureSpectrumUrlResult = {
+  url: string;
+  expiresAt?: string;
+  idempotencyKey?: string;
+};
+```
+
+The default provider should keep today's behavior:
+
+- return `https://sign-in.me/{agent}` for the plain flow
+- use the existing verbose Configure SDK URL when `messageCompleteUrl` or explicit overrides are present
+
+The minted provider can be added as an option later without changing the developer handler:
+
+```ts
+const configureSpectrum = withConfigure({
+  apiKey,
+  publishableKey,
+  agent,
+  store,
+  signIn: {
+    mintUrl: async (request) => {
+      // Calls Jon's API.
+      return { url, expiresAt, idempotencyKey };
+    },
+  },
+});
+```
+
+Store changes for minted URLs:
+
+```ts
+interface ConfigureSpectrumSubject {
+  signInSentAt?: string;
+  signInExpiresAt?: string;
+  signInIdempotencyKey?: string;
+}
+```
+
+`shouldConnect()` should allow another link when `signInExpiresAt` is in the past. For plain links, `signInExpiresAt` can remain absent and `sendOnce` behaves as it does today.
+
+Test cases to add:
+
+- plain flow still returns `https://sign-in.me/{agent}` without query params
+- `sendOnce` suppresses a second plain link
+- minted provider is called for the configured signed/minted path
+- minted result stores `signInExpiresAt`
+- expired `signInExpiresAt` permits a replacement link
+- unexpired `signInExpiresAt` suppresses duplicate links
 
 ### Phase 3: Reconnect
 
@@ -362,3 +426,15 @@ That is a product choice, not a model instruction.
 - Future minted URLs can be introduced without changing the developer's handler.
 - Reconnect has a reserved URL minting shape.
 - Guidance injection is documented as a nudge, not the auth mechanism.
+
+## Handoff Checklist
+
+Before implementation starts, confirm:
+
+- Jon's minting endpoint path, auth headers, request fields, and response fields.
+- Whether Photon signed subject tokens arrive on the Spectrum `message`, `space`, or provider metadata.
+- Whether minted URLs are single-use, multi-use until expiry, or idempotent by `idempotencyKey`.
+- Whether reconnect is initially unsupported, normal-sign-in fallback, or a separate hosted mode.
+- Whether quickstart should stay on the vendored tarball until preview publish, or consume a local packed tarball from the adapter repo.
+
+The next implementation should not change the developer handler API unless Jon's API forces a new input that cannot be derived from Spectrum state.
