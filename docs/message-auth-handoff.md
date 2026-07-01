@@ -79,6 +79,8 @@ const app = await Spectrum({
   providers: [imessage.config()],
 });
 
+const store = inMemoryStore();
+
 const configureSpectrum = withConfigure({
   apiKey: process.env.CONFIGURE_API_KEY!,
   publishableKey: process.env.CONFIGURE_PUBLISHABLE_KEY!,
@@ -104,6 +106,8 @@ for await (const [space, message] of app.messages) {
 ```
 
 The handler only runs when the adapter has not already handled the turn by sending a sign-in link.
+
+In production, replace `inMemoryStore()` with a durable store. `sendOnce: true` is safe for the current plain `sign-in.me/{agent}` flow because that URL is not per-user or short-lived. Once the adapter uses minted URLs with `expiresAt`, resend suppression must become expiry-aware.
 
 ## Control-Plane Flow
 
@@ -212,6 +216,8 @@ type MintMessageUrlResponse = {
 
 The adapter API should not force developers to care whether the returned URL is plain, minted, signed, or reconnect-specific.
 
+Minted URLs that include `expiresAt` must not be blocked forever by a previous `signInSentAt`. The adapter should store the minted URL expiration or a resend-after timestamp and allow a fresh link once the previous link has expired. `sendOnce` should mean "send at most one still-valid link for this subject," not "never send another link."
+
 ## Reconnect
 
 Reconnect should use the same hosted URL minting path when it is available.
@@ -289,7 +295,7 @@ Then the model prompt can describe only the agent's behavior and available conte
 
 ```ts
 const { profile } = await ctx.profile.read();
-const system = profileHasData(profile)
+const system = ctx.linked || profileHasData(profile)
   ? `${STYLE}\n\nWhat Configure already remembers about this user:\n${JSON.stringify(profile, null, 2)}`
   : `${STYLE}\n\nNo approved Configure profile is available for this sender yet. Do not claim personal context you do not have.`;
 ```
@@ -333,6 +339,7 @@ That is a product choice, not a model instruction.
 - Preserve `ctx.signInUrl()` as the public helper.
 - Route plain, completion, and minted flows through one internal abstraction.
 - Add idempotency support when minting links.
+- Track minted URL expiration so `sendOnce` does not suppress replacement links after expiry.
 
 ### Phase 3: Reconnect
 
