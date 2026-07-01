@@ -81,7 +81,7 @@ const store = withConfigure.localStore();
 
 `withConfigure.localStore()` keeps adapter state in the current process. It resets when the worker restarts.
 
-For the design rationale and minting/reconnect implementation plan, see [Message Auth Handoff Spec](docs/message-auth-handoff.md).
+For the design rationale and message URL/reconnect implementation plan, see [Message Auth Handoff Spec](docs/message-auth-handoff.md).
 
 ## How Resolution Works
 
