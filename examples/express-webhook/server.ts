@@ -1,7 +1,7 @@
 import express from "express";
 import { Spectrum } from "spectrum-ts";
 import { spectrum } from "@spectrum-ts/express";
-import { memoryStore, withConfigure } from "@configure-ai/spectrum-ts";
+import { inMemoryStore, withConfigure } from "@configure-ai/spectrum-ts";
 
 const app = await Spectrum({
   webhookSecret: process.env.SPECTRUM_WEBHOOK_SECRET!,
@@ -12,7 +12,7 @@ const configureSpectrum = withConfigure({
   apiKey: process.env.CONFIGURE_API_KEY!,
   publishableKey: process.env.CONFIGURE_PUBLISHABLE_KEY!,
   agent: process.env.CONFIGURE_AGENT!,
-  store: memoryStore(),
+  store: inMemoryStore(),
   connect: {
     mode: "intent",
     sendOnce: true,
@@ -32,7 +32,7 @@ server.use(
         const greeting = name ? `Hey ${name}.` : "Hey.";
         const state = ctx.linked
           ? "I have your Configure profile for this conversation."
-          : "I can answer normally. Send \"connect\" if you want to link your Configure profile.";
+          : "I can continue without a linked profile. Send \"connect\" to link Configure.";
 
         await message.reply(`${greeting} ${state}`);
       });

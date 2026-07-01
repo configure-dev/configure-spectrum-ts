@@ -1,5 +1,5 @@
 export { withConfigure } from "./adapter.js";
-export { memoryStore } from "./store.js";
+export { inMemoryStore } from "./store.js";
 
 export type {
   ConfigureSpectrum,

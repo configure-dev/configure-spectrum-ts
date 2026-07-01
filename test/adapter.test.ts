@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Message, Space } from "spectrum-ts";
-import { memoryStore, withConfigure, type ConfigureSpectrumStore } from "../src/index.js";
+import { inMemoryStore, withConfigure, type ConfigureSpectrumStore } from "../src/index.js";
 
 const baseOptions = {
   apiKey: "sk_test",
@@ -14,13 +14,13 @@ describe("withConfigure", () => {
       withConfigure({
         ...baseOptions,
         apiKey: "",
-        store: memoryStore(),
+        store: inMemoryStore(),
       })
     ).toThrow(/apiKey/);
   });
 
   it("falls back to a developer-scoped external identity", async () => {
-    const store = memoryStore();
+    const store = inMemoryStore();
     const configureSpectrum = withConfigure({ ...baseOptions, store });
     const ctx = await configureSpectrum.resolve(space(), message({ sender: { id: "slack-user" }, platform: "slack" }));
 
@@ -31,7 +31,7 @@ describe("withConfigure", () => {
   });
 
   it("recognizes approved phone-backed senders and stores the returned token", async () => {
-    const store = memoryStore();
+    const store = inMemoryStore();
     const fetch = jsonFetch(({ pathname }) => {
       expect(pathname).toBe("/v1/auth/sign-in/recognize-phone");
       return {
@@ -59,7 +59,7 @@ describe("withConfigure", () => {
   });
 
   it("does not treat recognized but unapproved phones as linked", async () => {
-    const store = memoryStore();
+    const store = inMemoryStore();
     const fetch = jsonFetch(() => ({
       matched: true,
       recognized: true,
@@ -79,7 +79,7 @@ describe("withConfigure", () => {
   });
 
   it("validates stored tokens on first use and then reuses the result", async () => {
-    const store = memoryStore();
+    const store = inMemoryStore();
     await store.saveSubject("subject-1", {
       externalId: "spectrum:subject-1",
       configureToken: "stored-token",
@@ -110,7 +110,7 @@ describe("withConfigure", () => {
   });
 
   it("clears stored tokens that do not validate for the current agent", async () => {
-    const store = memoryStore();
+    const store = inMemoryStore();
     await store.saveSubject("subject-1", {
       externalId: "spectrum:subject-1",
       configureToken: "stored-token",
@@ -141,7 +141,7 @@ describe("withConfigure", () => {
   });
 
   it("memoizes one sign-in journey per context", async () => {
-    const store = countingStore(memoryStore());
+    const store = countingStore(inMemoryStore());
     const configureSpectrum = withConfigure({
       ...baseOptions,
       store,
@@ -159,7 +159,7 @@ describe("withConfigure", () => {
   });
 
   it("validates completion callbacks before storing tokens", async () => {
-    const store = memoryStore();
+    const store = inMemoryStore();
     await store.saveSubject("subject-1", { externalId: "spectrum:subject-1" });
     await store.saveJourney?.({
       journeyId: "journey-1",
@@ -195,7 +195,7 @@ describe("withConfigure", () => {
 
   it("skips duplicate messages when the store rejects the claim", async () => {
     const store = {
-      ...memoryStore(),
+      ...inMemoryStore(),
       claimMessage: vi.fn(async () => false),
     };
     const configureSpectrum = withConfigure({ ...baseOptions, store });
@@ -206,7 +206,7 @@ describe("withConfigure", () => {
   });
 
   it("can send a first-message sign-in link and stop before the handler", async () => {
-    const store = memoryStore();
+    const store = inMemoryStore();
     const configureSpectrum = withConfigure({
       ...baseOptions,
       store,
