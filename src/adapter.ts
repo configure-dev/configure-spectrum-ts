@@ -255,6 +255,16 @@ export function withConfigure(options: ConfigureSpectrumOptions): ConfigureSpect
             expiresAt: new Date(now.getTime() + 15 * 60 * 1000).toISOString(),
           });
         }
+        // A message sign-in link is just the agent's first-party hosted page. The
+        // hosted OTP flow is public, so the plain flow needs no publishable key or
+        // query params — a clean `sign-in.me/<agent>` is enough, and the agent
+        // re-recognizes the user by phone on their next message. The verbose form
+        // (pk + journey + connectors) is only used when a messageCompleteUrl journey
+        // is configured, or the caller passes explicit overrides.
+        if (!journeyId && Object.keys(overrides).length === 0) {
+          const origin = (options.signIn?.signInOrigin ?? "https://sign-in.me").replace(/\/+$/, "");
+          return `${origin}/${encodeURIComponent(options.agent)}`;
+        }
         return configure.auth.signInUrl({
           publishableKey: options.publishableKey,
           delivery: "message",
