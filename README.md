@@ -1,8 +1,8 @@
-# Configure Identity for Spectrum
+# Configure SSO for Spectrum message handlers
 
-`@configure-ai/spectrum-ts` adds Configure identity and profile context to message agents built on Photon Spectrum (`spectrum-ts`).
+`@configure-ai/spectrum-ts` adds Configure sign-in and profile access to an existing Photon Spectrum (`spectrum-ts`) message handler.
 
-It gives an existing Spectrum (`spectrum-ts`) handler a resolved user context before your agent runs. Linked Configure users get approved profile access. New or unlinked senders get a stable developer-scoped profile and a hosted message sign-in path.
+It resolves the current sender before your handler runs, then provides a Configure profile runtime for the right access state. Approved users can receive personalized responses on the first generated turn. New or unlinked senders get a stable developer-scoped profile and a hosted message sign-in path.
 
 Spectrum continues to own channels, providers, webhooks, message objects, replies, typing, and delivery. This package only adds Configure identity and profile context at the message boundary.
 

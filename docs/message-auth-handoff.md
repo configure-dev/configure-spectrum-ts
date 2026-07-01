@@ -1,4 +1,4 @@
-# Message Auth Handoff Spec
+# Configure Message Auth for Spectrum
 
 Status: implementation handoff
 Owner: Configure
@@ -8,13 +8,15 @@ Scope: `@configure-ai/spectrum-ts`, Configure quickstart message agent, Configur
 
 Configure sign-in, reconnect, and permission-review links should be delivered by the adapter before the developer's model handler runs. The model can receive identity/profile context after Configure state is resolved, but it should not decide when to send auth links or compose those links.
 
+This is the implementation companion to the package-shape review spec. That spec defines the public adapter boundary for Spectrum developers. This document defines the backend, SDK, adapter, and quickstart work needed to make message-bound sign-in links real.
+
 The current adapter already supports the plain message flow:
 
 ```txt
 https://sign-in.me/{agent}
 ```
 
-That path is useful as a fallback, but it depends on phone-backed sender evidence after sign-in. To support cleaner Spectrum handoffs, channel-local subjects, and future Photon signed subject tokens, Configure should own a message URL minting API.
+That path is the working fallback today, but it depends on phone-backed sender evidence after sign-in. To support cleaner Spectrum handoffs, channel-local subjects, and future Photon signed subject tokens, Configure should own a message URL minting API.
 
 The target minted URL shape is:
 
@@ -83,7 +85,6 @@ const configureSpectrum = withConfigure({
   store: adapterStore,
   signIn: {
     displayName: "Configure",
-    linkMode: "minted",
   },
   connect: {
     mode: "intent",
@@ -108,6 +109,22 @@ const store = withConfigure.localStore();
 ```
 
 Production apps should back the store with their normal server-side persistence. The store persists adapter state only: sender mappings, approved Configure tokens, sign-in delivery state, completion journeys, and webhook idempotency. It does not store Configure user memories or profile data.
+
+After the message URL minting API lands, apps can opt into message-bound links without changing their handler:
+
+```ts
+const configureSpectrum = withConfigure({
+  apiKey,
+  publishableKey,
+  agent,
+  store,
+  signIn: {
+    linkMode: "auto",
+  },
+});
+```
+
+`auto` should prefer message-bound minted URLs when the backend and SDK support them, then fall back to the current plain `sign-in.me/{agent}` flow.
 
 ## Control-Plane Flow
 
