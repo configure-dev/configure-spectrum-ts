@@ -71,7 +71,7 @@ The Configure quickstart should use this path and remove sign-in URLs from model
 ```ts
 import { Spectrum } from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
-import { inMemoryStore, withConfigure } from "@configure-ai/spectrum-ts";
+import { withConfigure } from "@configure-ai/spectrum-ts";
 
 const app = await Spectrum({
   projectId: process.env.PHOTON_PROJECT_ID!,
@@ -79,7 +79,7 @@ const app = await Spectrum({
   providers: [imessage.config()],
 });
 
-const store = inMemoryStore();
+const store = withConfigure.localStore();
 
 const configureSpectrum = withConfigure({
   apiKey: process.env.CONFIGURE_API_KEY!,
@@ -107,7 +107,7 @@ for await (const [space, message] of app.messages) {
 
 The handler only runs when the adapter has not already handled the turn by sending a sign-in link.
 
-In production, replace `inMemoryStore()` with a durable store. `sendOnce: true` is safe for the current plain `sign-in.me/{agent}` flow because that URL is not per-user or short-lived. Once the adapter uses minted URLs with `expiresAt`, resend suppression must become expiry-aware.
+In production, replace `withConfigure.localStore()` with a durable store. `sendOnce: true` is safe for the current plain `sign-in.me/{agent}` flow because that URL is not per-user or short-lived. Once the adapter uses minted URLs with `expiresAt`, resend suppression must become expiry-aware.
 
 ## Control-Plane Flow
 

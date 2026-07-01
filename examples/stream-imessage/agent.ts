@@ -1,6 +1,6 @@
 import { Spectrum } from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
-import { inMemoryStore, withConfigure } from "@configure-ai/spectrum-ts";
+import { withConfigure } from "@configure-ai/spectrum-ts";
 
 const app = await Spectrum({
   projectId: process.env.PHOTON_PROJECT_ID!,
@@ -12,7 +12,7 @@ const configureSpectrum = withConfigure({
   apiKey: process.env.CONFIGURE_API_KEY!,
   publishableKey: process.env.CONFIGURE_PUBLISHABLE_KEY!,
   agent: process.env.CONFIGURE_AGENT!,
-  store: inMemoryStore(),
+  store: withConfigure.localStore(),
   signIn: {
     displayName: "Your Agent",
     agentPhone: process.env.AGENT_PHONE_NUMBER,

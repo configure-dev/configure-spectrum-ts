@@ -1,7 +1,7 @@
 import express from "express";
 import { Spectrum } from "spectrum-ts";
 import { spectrum } from "@spectrum-ts/express";
-import { inMemoryStore, withConfigure } from "@configure-ai/spectrum-ts";
+import { withConfigure } from "@configure-ai/spectrum-ts";
 
 const app = await Spectrum({
   webhookSecret: process.env.SPECTRUM_WEBHOOK_SECRET!,
@@ -12,7 +12,7 @@ const configureSpectrum = withConfigure({
   apiKey: process.env.CONFIGURE_API_KEY!,
   publishableKey: process.env.CONFIGURE_PUBLISHABLE_KEY!,
   agent: process.env.CONFIGURE_AGENT!,
-  store: inMemoryStore(),
+  store: withConfigure.localStore(),
   connect: {
     mode: "intent",
     sendOnce: true,
