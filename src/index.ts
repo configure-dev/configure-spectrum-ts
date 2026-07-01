@@ -14,6 +14,7 @@ export type {
   ConfigureSpectrumJourney,
   ConfigureSpectrumLogger,
   ConfigureSpectrumOptions,
+  ConfigureSpectrumSignInMessage,
   ConfigureSpectrumSignInOptions,
   ConfigureSpectrumStore,
   ConfigureSpectrumSubject,

@@ -24,10 +24,21 @@ server.use(
       await configureSpectrum.handle(space, message, async (ctx) => {
         if (!ctx.text) return;
         const { profile } = await ctx.profile.read();
-        await message.reply(`Profile linked: ${profile.linked ? "yes" : "not yet"}`);
+        const name = firstName(profile);
+        const greeting = name ? `Hey ${name}.` : "Hey.";
+        const state = ctx.linked
+          ? "I have your Configure profile for this conversation."
+          : "I can answer normally. Send \"connect\" if you want to link your Configure profile.";
+
+        await message.reply(`${greeting} ${state}`);
       });
     },
   })
 );
 
 server.listen(3000);
+
+function firstName(profile: { identity?: { name?: string } }): string | null {
+  const name = profile.identity?.name?.trim();
+  return name ? name.split(/\s+/)[0] ?? null : null;
+}

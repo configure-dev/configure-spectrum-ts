@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { Configure } from "configure";
+import type { SignInTokenValidationResult } from "configure";
 import type { Message, Space } from "spectrum-ts";
 import { deriveIdentity, messageKey, reconnectUrl, textFromMessage } from "./identity.js";
 import type {
@@ -11,6 +12,7 @@ import type {
   ConfigureSpectrumHandleResult,
   ConfigureSpectrumIdentityInput,
   ConfigureSpectrumOptions,
+  ConfigureSpectrumSignInMessage,
   ConfigureSpectrumSubject,
   ConfigureSpectrumTokenValidation,
 } from "./types.js";
@@ -95,6 +97,7 @@ export function withConfigure(options: ConfigureSpectrumOptions): ConfigureSpect
           });
         }
         if (recognition.recognized) {
+          await options.store.saveSubject(derived.subjectKey, { externalId: derived.externalId });
           return createContext({
             space,
             message,
@@ -164,8 +167,7 @@ export function withConfigure(options: ConfigureSpectrumOptions): ConfigureSpect
     }
 
     const validation = await configure.auth.validateSignInToken(input.token);
-    if (!validation.valid || validation.approved === false) return { ok: false, linked: false };
-    if (validation.agent && validation.agent !== options.agent) return { ok: false, linked: false };
+    if (!isValidAgentToken(validation, options.agent)) return { ok: false, linked: false };
     if (input.agent && input.agent !== options.agent) return { ok: false, linked: false };
     if (input.userId && validation.userId && input.userId !== validation.userId) return { ok: false, linked: false };
 
@@ -188,10 +190,10 @@ export function withConfigure(options: ConfigureSpectrumOptions): ConfigureSpect
     if (policy === "on-first-use" && validatedTokens.has(token)) return true;
     try {
       const validation = await configure.auth.validateSignInToken(token);
-      if (!validation.valid || validation.approved === false) return false;
+      if (!isValidAgentToken(validation, options.agent)) return false;
       validatedTokens.add(token);
-      if (validation.userId && validation.userId !== saved?.configureUserId) {
-        await options.store.saveSubject(saved?.key ?? "", { configureUserId: validation.userId });
+      if (validation.userId && saved && validation.userId !== saved.configureUserId) {
+        await options.store.saveSubject(saved.key, { configureUserId: validation.userId });
       }
       return true;
     } catch (error) {
@@ -221,7 +223,6 @@ export function withConfigure(options: ConfigureSpectrumOptions): ConfigureSpect
       subject: {
         key: input.derived.subjectKey,
         externalId: input.derived.externalId,
-        phoneCandidates: input.derived.phoneCandidates,
         ...(input.derived.senderId ? { senderId: input.derived.senderId } : {}),
         ...(input.saved?.signInSentAt ? { signInSentAt: input.saved.signInSentAt } : {}),
       },
@@ -321,11 +322,7 @@ async function shouldConnect(
 async function signInMessage(
   ctx: ConfigureSpectrumContext,
   url: string,
-  message:
-    | string
-    | ((ctx: ConfigureSpectrumContext, url: string) => string | Promise<string>)
-    | ((url: string) => string | Promise<string>)
-    | undefined
+  message: ConfigureSpectrumSignInMessage | undefined
 ): Promise<string> {
   if (typeof message === "function") {
     return message.length <= 1
@@ -334,6 +331,13 @@ async function signInMessage(
   }
   if (typeof message === "string") return message.replaceAll("{url}", url);
   return `Connect your profile: ${url}`;
+}
+
+function isValidAgentToken(validation: SignInTokenValidationResult, agent: string): boolean {
+  if (!validation.valid || validation.approved === false) return false;
+  if (validation.tokenUse && validation.tokenUse !== "agent") return false;
+  if (validation.agent && validation.agent !== agent) return false;
+  return true;
 }
 
 function assertRequired(value: string | undefined, name: string): void {

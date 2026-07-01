@@ -59,13 +59,14 @@ describe("withConfigure", () => {
   });
 
   it("does not treat recognized but unapproved phones as linked", async () => {
+    const store = memoryStore();
     const fetch = jsonFetch(() => ({
       matched: true,
       recognized: true,
       approved: false,
       linked: false,
     }));
-    const configureSpectrum = withConfigure({ ...baseOptions, store: memoryStore(), fetch });
+    const configureSpectrum = withConfigure({ ...baseOptions, store, fetch });
     const ctx = await configureSpectrum.resolve(
       space(),
       message({ platform: "iMessage", sender: { id: "+14155551234", address: "+14155551234" } })
@@ -74,6 +75,7 @@ describe("withConfigure", () => {
     expect(ctx.recognized).toBe(true);
     expect(ctx.linked).toBe(false);
     expect(ctx.identity.token).toBeUndefined();
+    expect(await store.getSubject(ctx.subject.key)).toMatchObject({ externalId: ctx.subject.externalId });
   });
 
   it("validates stored tokens on first use and then reuses the result", async () => {
@@ -105,6 +107,37 @@ describe("withConfigure", () => {
     expect(first.linked).toBe(true);
     expect(second.linked).toBe(true);
     expect(validations).toBe(1);
+  });
+
+  it("clears stored tokens that do not validate for the current agent", async () => {
+    const store = memoryStore();
+    await store.saveSubject("subject-1", {
+      externalId: "spectrum:subject-1",
+      configureToken: "stored-token",
+      configureUserId: "user-1",
+    });
+    const fetch = jsonFetch(({ pathname }) => {
+      expect(pathname).toBe("/v1/auth/sign-in/validate");
+      return { valid: true, approved: true, token_use: "agent", user_id: "user-1", agent: "other-agent" };
+    });
+    const configureSpectrum = withConfigure({
+      ...baseOptions,
+      store,
+      fetch,
+      identity: {
+        subjectKey: () => "subject-1",
+        externalId: () => "spectrum:subject-1",
+      },
+    });
+
+    const ctx = await configureSpectrum.resolve(space(), message());
+
+    expect(ctx.linked).toBe(false);
+    expect(ctx.identity.source).toBe("external_id");
+    expect(await store.getSubject("subject-1")).toMatchObject({
+      externalId: "spectrum:subject-1",
+    });
+    expect((await store.getSubject("subject-1"))?.configureToken).toBeUndefined();
   });
 
   it("memoizes one sign-in journey per context", async () => {
