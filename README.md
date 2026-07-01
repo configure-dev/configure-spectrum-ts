@@ -71,6 +71,8 @@ for await (const [space, message] of app.messages) {
 
 When `connect` sends a hosted link, `handle()` returns before the handler runs. The model does not need to decide when to produce Configure sign-in URLs.
 
+By default, hosted links use the clean plain form: `https://sign-in.me/{agent}`. If your Spectrum channel provides signed subject evidence, set `signIn.linkMode` to `"auto"` so the adapter can ask Configure for a message-bound URL when verification is available. If the signature is missing or unsupported, the adapter keeps using the plain link.
+
 `store` persists adapter state between messages: sender mappings, approved Configure tokens, sign-in delivery state, completion journeys, and webhook idempotency. It does not store Configure user memories or profile data. Most apps back this with the same persistence they already use for sessions, users, or webhook idempotency.
 
 For local development and examples:
@@ -117,6 +119,9 @@ const configureSpectrum = withConfigure({
   publishableKey,
   agent,
   store,
+  signIn: {
+    linkMode: "auto",
+  },
   connect: {
     mode: "intent",
     intent: /\b(connect|link|sign[\s-]?in|login)\b/i,
@@ -180,7 +185,7 @@ server.use(
 - Implement `saveJourney()` and `consumeJourney()` before setting `messageCompleteUrl`.
 - Choose a stored-token validation policy and document it.
 - Keep `CONFIGURE_API_KEY` server-side.
-- Use `CONFIGURE_PUBLISHABLE_KEY` only to build hosted `sign-in.me` URLs.
+- Keep `CONFIGURE_PUBLISHABLE_KEY` browser-safe; the adapter's default plain message link does not need to expose it in the URL.
 - Do not log tokens, phone numbers, full message bodies, or webhook headers.
 - Do not treat phone recognition as linked access unless Configure returns an approved token.
 

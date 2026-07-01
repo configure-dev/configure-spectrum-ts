@@ -60,6 +60,8 @@ function applyPatch(subject: ConfigureSpectrumSubject, patch: ConfigureSpectrumS
   setNullable(subject, "configureToken", patch.configureToken);
   setNullable(subject, "configureUserId", patch.configureUserId);
   setNullable(subject, "signInSentAt", patch.signInSentAt);
+  setNullable(subject, "signInExpiresAt", patch.signInExpiresAt);
+  setNullable(subject, "signInIdempotencyKey", patch.signInIdempotencyKey);
 }
 
 function setNullable<T extends object, K extends keyof T>(

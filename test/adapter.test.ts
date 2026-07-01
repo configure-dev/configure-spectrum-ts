@@ -173,6 +173,115 @@ describe("withConfigure", () => {
     expect(url.searchParams.get("pk")).toBeNull();
   });
 
+  it("uses the message URL API in auto mode when signed subject evidence exists", async () => {
+    const store = withConfigure.localStore();
+    const fetch = jsonFetch(({ pathname, body }) => {
+      expect(pathname).toBe("/v1/auth/sign-in/message-url");
+      expect(body).toMatchObject({
+        reason: "signin",
+        channel: "slack",
+        subject: {
+          key: "subject-1",
+          externalId: "spectrum:subject-1",
+          senderId: "slack-user",
+        },
+        subjectToken: "photon.signed.subject",
+        returnMode: "message",
+      });
+      return {
+        mode: "plain",
+        url: "https://sign-in.me/test-agent",
+        reason: "signin",
+        fallbackReason: "subject_signature_unsupported",
+      };
+    });
+    const configureSpectrum = withConfigure({
+      ...baseOptions,
+      store,
+      fetch,
+      signIn: { linkMode: "auto" },
+      identity: {
+        subjectKey: () => "subject-1",
+        externalId: () => "spectrum:subject-1",
+        subjectToken: () => "photon.signed.subject",
+      },
+    });
+
+    const ctx = await configureSpectrum.resolve(space(), message({ sender: { id: "slack-user" }, platform: "slack" }));
+
+    await expect(ctx.signInUrl()).resolves.toBe("https://sign-in.me/test-agent");
+  });
+
+  it("stores message URL expiry when a code-bearing sign-in link is sent", async () => {
+    const store = withConfigure.localStore();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+    const fetch = jsonFetch(({ pathname }) => {
+      expect(pathname).toBe("/v1/auth/sign-in/message-url");
+      return {
+        mode: "minted",
+        url: "https://sign-in.me/test-agent/cfgmsg_123",
+        expiresAt,
+        idempotencyKey: "slack:space-1:message-1:signin",
+      };
+    });
+    const configureSpectrum = withConfigure({
+      ...baseOptions,
+      store,
+      fetch,
+      signIn: { linkMode: "auto" },
+      identity: {
+        subjectKey: () => "subject-1",
+        externalId: () => "spectrum:subject-1",
+        subjectToken: () => "photon.signed.subject",
+      },
+    });
+    const inbound = message({ sender: { id: "slack-user" }, platform: "slack" });
+    const ctx = await configureSpectrum.resolve(space(), inbound);
+
+    await ctx.replyWithSignIn();
+
+    expect(inbound.reply).toHaveBeenCalledWith(
+      expect.stringContaining("https://sign-in.me/test-agent/cfgmsg_123")
+    );
+    expect(await store.getSubject("subject-1")).toMatchObject({
+      signInSentAt: expect.any(String),
+      signInExpiresAt: expiresAt,
+      signInIdempotencyKey: "slack:space-1:message-1:signin",
+    });
+  });
+
+  it("allows sendOnce to resend after a code-bearing link expires", async () => {
+    const store = withConfigure.localStore();
+    await store.saveSubject("subject-1", {
+      externalId: "spectrum:subject-1",
+      signInSentAt: new Date(Date.now() - 20 * 60 * 1000).toISOString(),
+      signInExpiresAt: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+      signInIdempotencyKey: "old:signin",
+    });
+    const configureSpectrum = withConfigure({
+      ...baseOptions,
+      store,
+      connect: {
+        mode: "first-message",
+        sendOnce: true,
+        behavior: "send-and-stop",
+      },
+      identity: {
+        subjectKey: () => "subject-1",
+        externalId: () => "spectrum:subject-1",
+      },
+    });
+    const inbound = message({ sender: { id: "slack-user" }, platform: "slack" });
+    const handler = vi.fn();
+
+    await expect(configureSpectrum.handle(space(), inbound, handler)).resolves.toEqual({ status: "connect-link-sent" });
+    expect(inbound.reply).toHaveBeenCalledWith(expect.stringContaining("https://sign-in.me/test-agent"));
+    expect(handler).not.toHaveBeenCalled();
+    const saved = await store.getSubject("subject-1");
+    expect(saved?.signInExpiresAt).toBeUndefined();
+    expect(saved?.signInIdempotencyKey).toBeUndefined();
+  });
+
   it("validates completion callbacks before storing tokens", async () => {
     const store = withConfigure.localStore();
     await store.saveSubject("subject-1", { externalId: "spectrum:subject-1" });

@@ -10,6 +10,13 @@ import type { Message, Space } from "spectrum-ts";
 export type ProfileRuntime = ReturnType<Configure["profile"]>;
 
 export type ConfigureSpectrumConnectMode = "manual" | "intent" | "first-message";
+export type ConfigureSpectrumLinkMode = "plain" | "auto" | "minted";
+export type ConfigureSpectrumMessageUrlReason = "signin" | "reconnect" | "permissions";
+export type ConfigureSpectrumMessageUrlMode = "minted" | "plain";
+export type ConfigureSpectrumMessageUrlFallbackReason =
+  | "subject_signature_missing"
+  | "subject_signature_invalid"
+  | "subject_signature_unsupported";
 export type ConfigureSpectrumTokenValidation = "never" | "always" | "on-first-use";
 export type ConfigureSpectrumSignInMessage =
   | string
@@ -31,6 +38,8 @@ export interface ConfigureSpectrumSignInOptions {
   messageCompleteUrl?: string;
   theme?: "light" | "dark";
   signInOrigin?: string;
+  linkMode?: ConfigureSpectrumLinkMode;
+  mintUrl?: (request: ConfigureSpectrumMessageUrlRequest) => Promise<ConfigureSpectrumMessageUrlResult>;
 }
 
 export interface ConfigureSpectrumConnectOptions {
@@ -50,6 +59,7 @@ export interface ConfigureSpectrumIdentityOptions {
   subjectKey?: (input: ConfigureSpectrumIdentityInput) => string | Promise<string>;
   threadKey?: (input: ConfigureSpectrumIdentityInput) => string | Promise<string>;
   phoneCandidates?: (input: ConfigureSpectrumIdentityInput) => string[] | Promise<string[]>;
+  subjectToken?: (input: ConfigureSpectrumIdentityInput) => string | undefined | Promise<string | undefined>;
   externalId?: (input: ConfigureSpectrumIdentityInput & { subjectKey: string }) => string | Promise<string>;
   validateStoredToken?: ConfigureSpectrumTokenValidation;
 }
@@ -76,6 +86,8 @@ export interface ConfigureSpectrumSubject {
   configureToken?: string;
   configureUserId?: string;
   signInSentAt?: string;
+  signInExpiresAt?: string;
+  signInIdempotencyKey?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -85,6 +97,8 @@ export interface ConfigureSpectrumSubjectPatch {
   configureToken?: string | null;
   configureUserId?: string | null;
   signInSentAt?: string | null;
+  signInExpiresAt?: string | null;
+  signInIdempotencyKey?: string | null;
 }
 
 export interface ConfigureSpectrumJourney {
@@ -112,12 +126,37 @@ export interface ConfigureSpectrumSubjectContext {
   externalId: string;
   senderId?: string;
   signInSentAt?: string;
+  signInExpiresAt?: string;
+  signInIdempotencyKey?: string;
 }
 
 export interface ConfigureSpectrumThreadContext {
   key: string;
   spaceId: string;
+  messageId?: string;
 }
+
+export interface ConfigureSpectrumMessageUrlRequest {
+  reason: ConfigureSpectrumMessageUrlReason;
+  ctx: ConfigureSpectrumContext;
+  subjectToken?: string;
+  connectorIds?: string[];
+  idempotencyKey: string;
+}
+
+export type ConfigureSpectrumMessageUrlResult =
+  | {
+      mode: "minted";
+      url: string;
+      expiresAt: string;
+      idempotencyKey?: string;
+    }
+  | {
+      mode: "plain";
+      url: string;
+      fallbackReason?: ConfigureSpectrumMessageUrlFallbackReason;
+      idempotencyKey?: string;
+    };
 
 export interface ConfigureSpectrumContext {
   space: Space;
