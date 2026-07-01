@@ -158,6 +158,21 @@ describe("withConfigure", () => {
     expect(store.savedJourneys).toBe(1);
   });
 
+  it("returns a clean sign-in link for the plain message flow (no pk, no params)", async () => {
+    const store = inMemoryStore();
+    const configureSpectrum = withConfigure({
+      ...baseOptions,
+      store,
+      signIn: { displayName: "Test Agent", agentPhone: "+14155550000", connectors: ["gmail"] },
+    });
+    const ctx = await configureSpectrum.resolve(space(), message());
+    const url = new URL(await ctx.signInUrl());
+
+    expect(url.origin + url.pathname).toBe("https://sign-in.me/test-agent");
+    expect(url.search).toBe(""); // no ?pk=, no delivery, no message_line_phone
+    expect(url.searchParams.get("pk")).toBeNull();
+  });
+
   it("validates completion callbacks before storing tokens", async () => {
     const store = inMemoryStore();
     await store.saveSubject("subject-1", { externalId: "spectrum:subject-1" });
