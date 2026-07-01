@@ -79,7 +79,7 @@ const app = await Spectrum({
   providers: [imessage.config()],
 });
 
-const store = withConfigure.localStore();
+const store = withConfigure.localStore(); // Local quickstart only.
 
 const configureSpectrum = withConfigure({
   apiKey: process.env.CONFIGURE_API_KEY!,
@@ -107,7 +107,7 @@ for await (const [space, message] of app.messages) {
 
 The handler only runs when the adapter has not already handled the turn by sending a sign-in link.
 
-In production, replace `withConfigure.localStore()` with a durable store. `sendOnce: true` is safe for the current plain `sign-in.me/{agent}` flow because that URL is not per-user or short-lived. Once the adapter uses minted URLs with `expiresAt`, resend suppression must become expiry-aware.
+In production, replace `withConfigure.localStore()` with an implementation backed by the app's normal persistence layer. `sendOnce: true` is safe for the current plain `sign-in.me/{agent}` flow because that URL is not per-user or short-lived. Once the adapter uses minted URLs with `expiresAt`, resend suppression must become expiry-aware.
 
 ## Control-Plane Flow
 
