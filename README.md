@@ -1,6 +1,6 @@
-# Configure SSO for Spectrum
+# Configure Identity for Spectrum
 
-`@configure-ai/spectrum-ts` is the Configure adapter for message agents built on Photon Spectrum (`spectrum-ts`).
+`@configure-ai/spectrum-ts` adds Configure identity and profile context to message agents built on Photon Spectrum (`spectrum-ts`).
 
 It gives an existing Spectrum (`spectrum-ts`) handler a resolved user context before your agent runs. Linked Configure users get approved profile access. New or unlinked senders get a stable developer-scoped profile and a hosted message sign-in path.
 
@@ -23,6 +23,15 @@ npm install @configure-ai/spectrum-ts
 ```
 
 New apps should install Spectrum according to [Photon's docs](https://photon.codes/docs/) before adding this package. If your package manager does not auto-install peer dependencies, install `spectrum-ts` explicitly.
+
+Private preview installs can use a packed tarball until the package is published:
+
+```bash
+npm pack
+npm install ./configure-ai-spectrum-ts-0.1.0-preview.0.tgz
+```
+
+For deployable preview apps, commit the tarball in the consuming repo and reference it with a relative `file:` dependency. Replace that dependency with `@configure-ai/spectrum-ts` after npm publish.
 
 ## Existing Handler
 
