@@ -43,6 +43,12 @@ const configureSpectrum = withConfigure({
   publishableKey: process.env.CONFIGURE_PUBLISHABLE_KEY!,
   agent: process.env.CONFIGURE_AGENT!,
   store: inMemoryStore(), // Process-local. Use a durable store in production.
+  connect: {
+    mode: "intent",
+    sendOnce: true,
+    behavior: "send-and-stop",
+    message: "Connect your Configure profile: {url}",
+  },
 });
 
 for await (const [space, message] of app.messages) {
@@ -54,7 +60,6 @@ for await (const [space, message] of app.messages) {
         message,
         profile,
         linked: ctx.linked,
-        signInUrl: await ctx.signInUrl(),
       })
     );
   });
@@ -62,6 +67,8 @@ for await (const [space, message] of app.messages) {
 ```
 
 `ctx.profile` is built from a linked Configure token when one is available, or from a developer-scoped external user before sign-in. That lets the rest of your agent use one profile runtime while Configure enforces the appropriate access boundary.
+
+When `connect` sends a hosted link, `handle()` returns before the handler runs. The model does not need to decide when to produce Configure sign-in URLs.
 
 ## How Resolution Works
 
@@ -89,16 +96,7 @@ Recognition is not authorization. Treat `ctx.linked` as the signal that Configur
 
 ## Sign-In Handoff
 
-Use manual sign-in when your agent decides the sender should connect:
-
-```ts
-if (!ctx.linked && needsPersonalData(ctx)) {
-  await ctx.replyWithSignIn();
-  return;
-}
-```
-
-You can also configure first-message or intent-based prompts:
+The adapter can send hosted links before your model runs:
 
 ```ts
 const configureSpectrum = withConfigure({
@@ -109,11 +107,23 @@ const configureSpectrum = withConfigure({
   connect: {
     mode: "intent",
     intent: /\b(connect|link|sign[\s-]?in|login)\b/i,
+    sendOnce: true,
+    behavior: "send-and-stop",
+    message: "Connect your Configure profile: {url}",
   },
 });
 ```
 
-`connect.mode` defaults to `manual` so the adapter does not send links unless your app asks it to.
+`connect.mode` defaults to `manual`, so the adapter does not send links unless your app opts in. Use `mode: "first-message"` if your product should require Configure sign-in before the first model response.
+
+You can still send a link manually from application code:
+
+```ts
+if (!ctx.linked && needsPersonalData(ctx)) {
+  await ctx.replyWithSignIn();
+  return;
+}
+```
 
 ## Webhook Composition
 
