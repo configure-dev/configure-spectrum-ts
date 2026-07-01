@@ -16,7 +16,7 @@ The current adapter already supports the plain message flow:
 https://sign-in.me/{agent}
 ```
 
-That path is the working fallback today, but it depends on phone-backed sender evidence after sign-in. To support cleaner Spectrum handoffs, channel-local subjects, and future Photon signed subject tokens, Configure should own a message URL minting API.
+That path is the working fallback today, but it depends on phone-backed sender evidence after sign-in. To support cleaner Spectrum handoffs and channel-local subjects, Configure should own a message URL API that can mint message-bound links when Photon provides signed subject evidence.
 
 The target minted URL shape is:
 
@@ -24,7 +24,7 @@ The target minted URL shape is:
 https://sign-in.me/{agent}/{code}
 ```
 
-The code is an opaque, short-lived Configure record. It is not a token, not a phone number, and not model-visible state.
+The code is an opaque, short-lived Configure record. It is not a token, not a phone number, and not model-visible state. Configure should generate this code only when it receives and verifies a Photon-signed subject token for the current message subject. Without that signature, the adapter should use the plain `https://sign-in.me/{agent}` fallback and no code-bearing link should be created.
 
 ## Current State
 
@@ -47,9 +47,10 @@ The visible repos do not yet expose a message URL minting endpoint or SDK method
 - Resolve Configure identity before the model runs.
 - Send hosted sign-in links outside the model hot path.
 - Support the current plain `sign-in.me/{agent}` handoff as a fallback.
-- Add a Configure-owned URL minting API for message handoffs.
+- Add a Configure-owned message URL API for message handoffs.
 - Reserve reconnect and permission-review behavior for the same URL minting surface.
-- Support Photon signed subject tokens when available without requiring them for the first implementation.
+- Require verified Photon-signed subject evidence for code-bearing message links.
+- Continue to work without Photon-signed subject evidence by returning or building the plain sign-in fallback.
 - Keep prompt/guidance injection as a nudge only, not as the auth enforcement mechanism.
 - Make the quickstart demonstrate adapter-owned handoff.
 
@@ -194,6 +195,8 @@ Content-Type: application/json
 
 This endpoint requires `requireAgent` and `requireSecretKey`. It should not accept publishable keys.
 
+The endpoint should return a code-bearing URL only after verifying Photon-signed subject evidence. If no valid Photon signature is present, it should return a plain fallback URL and must not insert a message-link code record.
+
 ### Request
 
 ```ts
@@ -227,29 +230,50 @@ Notes:
 
 - `subject.key` is the adapter's stable subject key, such as `sp_...`.
 - `subject.externalId` is the developer-scoped fallback external id, such as `spectrum:sp_...`.
-- `subjectToken` is an optional Photon signed subject token. It is server-side only and must not be sent to the model.
+- `subjectToken` is the Photon-signed subject token when Spectrum exposes one. It is server-side only and must not be sent to the model.
+- A code-bearing `mode: "minted"` response requires a present and verified `subjectToken`. If it is absent or invalid, the endpoint should return `mode: "plain"` with `fallbackReason` and no `code`.
 - Do not put raw phone numbers in the minted URL.
 - Phone candidates, if needed for recognition, should remain part of recognition APIs rather than the URL minting request.
 
 ### Response
 
 ```ts
-type CreateMessageSignInUrlResponse = {
-  url: string;
-  code: string;
-  reason: "signin" | "reconnect" | "permissions";
-  expiresAt: string;
-  idempotencyKey?: string;
-};
+type CreateMessageSignInUrlResponse =
+  | {
+      mode: "minted";
+      url: string;
+      code: string;
+      reason: "signin" | "reconnect" | "permissions";
+      expiresAt: string;
+      idempotencyKey?: string;
+    }
+  | {
+      mode: "plain";
+      url: string;
+      reason: "signin" | "reconnect" | "permissions";
+      fallbackReason:
+        | "subject_signature_missing"
+        | "subject_signature_invalid"
+        | "subject_signature_unsupported";
+      idempotencyKey?: string;
+    };
 ```
 
-The returned URL should normally be:
+The minted response URL should be:
 
 ```txt
 https://sign-in.me/{agent}/{code}
 ```
 
 The code is opaque and short-lived. It should be safe to display in a message thread but useless without Configure's hosted surface.
+
+The plain response URL should be:
+
+```txt
+https://sign-in.me/{agent}
+```
+
+The plain response is not a magic link. It exists so callers can keep one message URL orchestration path while Configure refuses to create a message-bound code without verified Photon subject evidence.
 
 ### Backend Storage
 
@@ -290,7 +314,7 @@ create index message_sign_in_links_subject_idx
   on message_sign_in_links(developer_account_id, agent, subject_key, created_at desc);
 ```
 
-Use a hash of the code at rest, following the existing sign-in return-code pattern.
+Use a hash of the code at rest, following the existing sign-in return-code pattern. Do not insert a row for `mode: "plain"` fallback responses.
 
 ### Expiry And Idempotency
 
@@ -320,7 +344,7 @@ The hosted page should not expose the agent token to browser-visible JS except t
 
 ### Signed Subject Tokens
 
-Support for Photon signed subject tokens can land after the basic minting API, but the data model and request shape should reserve it now.
+Code-bearing message links require Photon signed subject tokens. The endpoint can ship before Photon signatures are available, but in that state it should return `mode: "plain"` and must not generate a magic-code URL.
 
 When available, Configure should verify the subject token server-side and treat it as channel identity evidence. The token should be checked for:
 
@@ -334,7 +358,7 @@ When available, Configure should verify the subject token server-side and treat 
 
 If the signed subject token identifies a federated Configure user that already approved the agent, the hosted page can skip OTP and go directly to consent/success as appropriate.
 
-If the signed subject token only identifies a channel-local subject, it can still bind the minted link to the message subject and help future recognition, but it must not grant cross-agent profile access by itself.
+If the signed subject token only identifies a channel-local subject, it can bind the minted link to the message subject and help future recognition, but it must not grant cross-agent profile access by itself.
 
 ## TypeScript SDK
 
@@ -387,10 +411,15 @@ export interface CreateMessageSignInUrlOptions {
 }
 
 export interface CreateMessageSignInUrlResult {
+  mode: "minted" | "plain";
   url: string;
-  code: string;
+  code?: string;
   reason: MessageSignInReason;
-  expiresAt: string;
+  expiresAt?: string;
+  fallbackReason?:
+    | "subject_signature_missing"
+    | "subject_signature_invalid"
+    | "subject_signature_unsupported";
   idempotencyKey?: string;
 }
 ```
@@ -412,9 +441,14 @@ type ConfigureSpectrumUrlRequest = {
 };
 
 type ConfigureSpectrumUrlResult = {
+  mode: "minted" | "plain";
   url: string;
   expiresAt?: string;
   idempotencyKey?: string;
+  fallbackReason?:
+    | "subject_signature_missing"
+    | "subject_signature_invalid"
+    | "subject_signature_unsupported";
 };
 ```
 
@@ -435,8 +469,8 @@ const configureSpectrum = withConfigure({
 Recommended behavior:
 
 - `plain`: current `https://sign-in.me/{agent}` behavior.
-- `minted`: call `configure.auth.createMessageSignInUrl()`.
-- `auto`: call minted URL when the SDK/backend supports it; otherwise fall back to plain.
+- `minted`: call `configure.auth.createMessageSignInUrl()` only when a Photon-signed subject token is available; otherwise return the plain fallback unless a future strict option is added.
+- `auto`: use a minted response only when the SDK/backend supports it and verified Photon-signed subject evidence is available; otherwise fall back to plain.
 
 The adapter should still support a custom provider for private preview testing:
 
@@ -448,7 +482,7 @@ const configureSpectrum = withConfigure({
   store,
   signIn: {
     mintUrl: async (request) => {
-      return { url, expiresAt, idempotencyKey };
+      return { mode: "minted", url, expiresAt, idempotencyKey };
     },
   },
 });
@@ -585,7 +619,9 @@ Backend:
 
 - Add `message_sign_in_links` migration.
 - Add `POST /v1/auth/sign-in/message-url`.
-- Add code hashing, expiry, idempotency, audit events, and rate limits.
+- Add code hashing, expiry, idempotency, audit events, and rate limits for `mode: "minted"` responses.
+- Require a verified Photon signature before generating `sign-in.me/{agent}/{code}`.
+- Return `mode: "plain"` and create no code record when the Photon signature is missing, invalid, or unsupported.
 - Add hosted lookup/completion handling for `sign-in.me/{agent}/{code}`.
 - Preserve existing hosted OTP/approval fallback.
 
@@ -601,6 +637,7 @@ Spectrum adapter:
 - Add `signIn.linkMode`.
 - Add optional `signIn.mintUrl` provider for private preview.
 - Route `ctx.signInUrl()` through the provider.
+- Ensure `ctx.signInUrl()` never emits a code-bearing magic link without verified Photon-signed subject evidence.
 - Add `signInExpiresAt` and `signInIdempotencyKey` store fields.
 - Make `sendOnce` expiry-aware.
 
@@ -614,7 +651,7 @@ Quickstart:
 
 - Confirm Photon signed subject token location in Spectrum objects.
 - Add adapter extraction with safe defaults.
-- Add backend verification and tests.
+- Add backend verification and tests for Photon-signed subject tokens.
 - Add recognition path from signed subject token.
 - Allow OTP bypass only when token verification and existing Configure session/user binding are sound.
 
@@ -637,6 +674,9 @@ Backend tests:
 - `POST /v1/auth/sign-in/message-url` requires `sk_`.
 - `pk_` cannot mint URLs.
 - Missing subject key/external id fails validation.
+- Missing Photon signature returns a plain fallback response and creates no message-link row.
+- Invalid Photon signature returns a plain fallback response or typed failure and creates no message-link row.
+- Valid Photon signature is required for a code-bearing minted response.
 - Idempotency returns the same unexpired link.
 - Expired idempotent link is replaced.
 - Code hash is stored; raw code is not.
@@ -647,7 +687,7 @@ Backend tests:
 SDK tests:
 
 - `createMessageSignInUrl()` posts the expected body.
-- It maps snake_case and camelCase response fields.
+- It maps minted and plain fallback responses.
 - It rejects malformed responses.
 
 Adapter tests:
@@ -656,6 +696,7 @@ Adapter tests:
 - `sendOnce` suppresses a second plain link
 - minted provider is called for `linkMode: "minted"`
 - minted result stores `signInExpiresAt`
+- plain fallback result does not store `signInExpiresAt` as a magic-link expiry
 - expired `signInExpiresAt` permits a replacement link
 - unexpired `signInExpiresAt` suppresses duplicate links
 - developer handler does not run when the adapter sends a link
@@ -671,6 +712,7 @@ Quickstart tests:
 - The quickstart demonstrates adapter-owned sign-in delivery.
 - The model is not given a sign-in URL in its system prompt.
 - Plain message sign-in works without Photon signed-token support.
+- Magic-code links are never generated without verified Photon-signed subject evidence.
 - Minted URLs can be introduced without changing the developer's handler.
 - Reconnect has a reserved URL minting shape.
 - Guidance injection is documented as a nudge, not the auth mechanism.
