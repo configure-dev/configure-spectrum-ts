@@ -1,0 +1,16 @@
+{
+  "name": "@configure-ai/spectrum-ts-example-stream-imessage",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@configure-ai/spectrum-ts": "file:../..",
+    "configure": "^1.1.12",
+    "spectrum-ts": "^8.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0"
+  }
+}
