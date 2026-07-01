@@ -28,7 +28,7 @@ await configureSpectrum.handle(space, message, async (ctx) => {
 - Re-exporting Spectrum APIs.
 - Parsing or verifying Photon webhooks.
 - Owning the model loop.
-- Hiding production persistence behind an implicit in-memory store.
+- Hiding production persistence behind implicit process-local storage.
 - Treating phone recognition as authorization.
 
 ## V0.1 Decisions

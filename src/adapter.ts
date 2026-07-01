@@ -330,7 +330,7 @@ async function signInMessage(
       : (message as (ctx: ConfigureSpectrumContext, url: string) => string | Promise<string>)(ctx, url);
   }
   if (typeof message === "string") return message.replaceAll("{url}", url);
-  return `Connect your profile: ${url}`;
+  return `Connect your Configure profile: ${url}`;
 }
 
 function isValidAgentToken(validation: SignInTokenValidationResult, agent: string): boolean {

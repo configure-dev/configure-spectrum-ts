@@ -6,7 +6,7 @@ It gives an existing Spectrum (`spectrum-ts`) handler a resolved user context be
 
 Spectrum continues to own channels, providers, webhooks, message objects, replies, typing, and delivery. This package only adds Configure identity and profile context at the message boundary.
 
-## What You Get
+## Capabilities
 
 - **Identity context before the response.** Resolve the sender before model execution, so your first generated reply can use the right identity state.
 - **Continuity across supported channels.** When Spectrum exposes a phone-backed sender identifier, the adapter can resolve that sender to the same approved Configure user across supported channels. When a channel only exposes channel-local identifiers, the adapter falls back to a stable developer-scoped user until the sender links with Configure.
@@ -24,16 +24,16 @@ npm install @configure-ai/spectrum-ts
 
 New apps should install Spectrum according to [Photon's docs](https://photon.codes/docs/) before adding this package. If your package manager does not auto-install peer dependencies, install `spectrum-ts` explicitly.
 
-## Use It In An Existing Handler
+## Existing Handler
 
 ```ts
-import { memoryStore, withConfigure } from "@configure-ai/spectrum-ts";
+import { inMemoryStore, withConfigure } from "@configure-ai/spectrum-ts";
 
 const configureSpectrum = withConfigure({
   apiKey: process.env.CONFIGURE_API_KEY!,
   publishableKey: process.env.CONFIGURE_PUBLISHABLE_KEY!,
   agent: process.env.CONFIGURE_AGENT!,
-  store: memoryStore(), // Local development only. Use a durable store in production.
+  store: inMemoryStore(), // Process-local. Use a durable store in production.
 });
 
 for await (const [space, message] of app.messages) {

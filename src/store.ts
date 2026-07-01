@@ -5,7 +5,7 @@ import type {
   ConfigureSpectrumSubjectPatch,
 } from "./types.js";
 
-export function memoryStore(): ConfigureSpectrumStore {
+export function inMemoryStore(): ConfigureSpectrumStore {
   const subjects = new Map<string, ConfigureSpectrumSubject>();
   const journeys = new Map<string, ConfigureSpectrumJourney>();
   const claimedMessages = new Map<string, number>();

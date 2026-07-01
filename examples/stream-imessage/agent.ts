@@ -1,6 +1,6 @@
 import { Spectrum } from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
-import { memoryStore, withConfigure } from "@configure-ai/spectrum-ts";
+import { inMemoryStore, withConfigure } from "@configure-ai/spectrum-ts";
 
 const app = await Spectrum({
   projectId: process.env.PHOTON_PROJECT_ID!,
@@ -12,7 +12,7 @@ const configureSpectrum = withConfigure({
   apiKey: process.env.CONFIGURE_API_KEY!,
   publishableKey: process.env.CONFIGURE_PUBLISHABLE_KEY!,
   agent: process.env.CONFIGURE_AGENT!,
-  store: memoryStore(),
+  store: inMemoryStore(),
   signIn: {
     displayName: "Your Agent",
     agentPhone: process.env.AGENT_PHONE_NUMBER,
@@ -31,7 +31,7 @@ for await (const [space, message] of app.messages) {
     const greeting = name ? `Hey ${name}.` : "Hey.";
     const state = ctx.linked
       ? "I have your Configure profile for this conversation."
-      : "I can answer normally. Send \"connect\" if you want to link your Configure profile.";
+      : "I can continue without a linked profile. Send \"connect\" to link Configure.";
 
     await message.reply(`${greeting} ${state}`);
   });
