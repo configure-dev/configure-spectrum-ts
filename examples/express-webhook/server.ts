@@ -13,6 +13,10 @@ const configureSpectrum = withConfigure({
   publishableKey: process.env.CONFIGURE_PUBLISHABLE_KEY!,
   agent: process.env.CONFIGURE_AGENT!,
   store: memoryStore(),
+  connect: {
+    mode: "intent",
+    sendOnce: true,
+  },
 });
 
 const server = express();
