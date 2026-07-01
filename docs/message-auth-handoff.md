@@ -1,33 +1,55 @@
 # Message Auth Handoff Spec
 
-Status: draft
+Status: implementation handoff
 Owner: Configure
-Scope: `@configure-ai/spectrum-ts`, Configure quickstart message agent, and the upcoming Configure URL minting API
+Scope: `@configure-ai/spectrum-ts`, Configure quickstart message agent, Configure backend sign-in APIs, and the TypeScript SDK
 
 ## Summary
 
-Configure sign-in and reconnect links should be delivered by the adapter before the developer's model handler runs. The model can receive identity/profile context after Configure state is resolved, but it should not be responsible for deciding when to send a sign-in link or for composing that link.
+Configure sign-in, reconnect, and permission-review links should be delivered by the adapter before the developer's model handler runs. The model can receive identity/profile context after Configure state is resolved, but it should not decide when to send auth links or compose those links.
 
-The current adapter can already send a clean hosted link for the plain message flow:
+The current adapter already supports the plain message flow:
 
 ```txt
 https://sign-in.me/{agent}
 ```
 
-That path does not require the upcoming Photon signed-token or magic-link flow. The hosted page can still run the existing Configure verification and consent flow, and the agent can recognize the user by phone on the next message when Spectrum exposes phone-backed sender evidence.
+That path is useful as a fallback, but it depends on phone-backed sender evidence after sign-in. To support cleaner Spectrum handoffs, channel-local subjects, and future Photon signed subject tokens, Configure should own a message URL minting API.
 
-Jon's URL minting API will later provide stronger signed-token and magic-code handoffs. The adapter should be structured so that API can replace or augment `ctx.signInUrl()` without changing the developer's model loop.
+The target minted URL shape is:
+
+```txt
+https://sign-in.me/{agent}/{code}
+```
+
+The code is an opaque, short-lived Configure record. It is not a token, not a phone number, and not model-visible state.
+
+## Current State
+
+As of this spec, the visible repos expose:
+
+- `ctx.signInUrl()` in `@configure-ai/spectrum-ts`
+- clean plain links for the no-completion message flow
+- verbose SDK URLs when `messageCompleteUrl` or explicit URL overrides are present
+- `configure.auth.signInUrl()`
+- `POST /v1/auth/sign-in/code`
+- `POST /v1/auth/sign-in/exchange`
+- `POST /v1/auth/sign-in/recognize-phone`
+- `POST /v1/auth/sign-in/validate`
+
+The visible repos do not yet expose a message URL minting endpoint or SDK method. This spec defines the Configure-owned API and adapter work needed to implement it.
 
 ## Goals
 
 - Keep Spectrum developers on their existing `Spectrum` app, message loop, providers, and webhook adapters.
 - Resolve Configure identity before the model runs.
 - Send hosted sign-in links outside the model hot path.
-- Support the current plain `sign-in.me/{agent}` handoff.
-- Add a clear extension point for Jon's URL minting API.
-- Reserve reconnect behavior for the same URL minting surface.
-- Keep prompt/guidance injection as a nudge only, not as the enforcement mechanism.
-- Make the quickstart demonstrate the intended adapter-owned handoff.
+- Support the current plain `sign-in.me/{agent}` handoff as a fallback.
+- Add a Configure-owned URL minting API for message handoffs.
+- Reserve reconnect and permission-review behavior for the same URL minting surface.
+- Support Photon signed subject tokens when available without requiring them for the first implementation.
+- Keep prompt/guidance injection as a nudge only, not as the auth enforcement mechanism.
+- Make the quickstart demonstrate adapter-owned handoff.
 
 ## Non-Goals
 
@@ -35,43 +57,18 @@ Jon's URL minting API will later provide stronger signed-token and magic-code ha
 - Do not require developers to modify their system prompts for Configure sign-in.
 - Do not require the model to call a tool to get the sign-in link.
 - Do not expose Configure secret keys, agent tokens, raw phone candidates, or signed Photon claims to the model.
+- Do not require new infrastructure from Spectrum developers just to use the adapter.
 - Do not build a separate reconnect protocol if reconnect can be represented by the same hosted URL minting surface.
 
-## Current State
-
-`ctx.signInUrl()` now returns a clean URL for the plain message flow when no completion journey or explicit URL overrides are present:
-
-```txt
-https://sign-in.me/{agent}
-```
-
-The verbose URL form is still used when `messageCompleteUrl` is configured or when the caller passes explicit overrides. That preserves the existing webhook-completion path.
-
-`configureSpectrum.handle()` already supports adapter-owned link delivery through `connect` options:
-
-```ts
-const configureSpectrum = withConfigure({
-  apiKey,
-  publishableKey,
-  agent,
-  store,
-  connect: {
-    mode: "intent",
-    sendOnce: true,
-    behavior: "send-and-stop",
-    message: "Connect your Configure profile: {url}",
-  },
-});
-```
-
-The Configure quickstart should use this path and remove sign-in URLs from model/system prompt text.
-
 ## Target Developer Experience
+
+Production-shaped usage:
 
 ```ts
 import { Spectrum } from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
 import { withConfigure } from "@configure-ai/spectrum-ts";
+import { adapterStore } from "./configure-spectrum-store";
 
 const app = await Spectrum({
   projectId: process.env.PHOTON_PROJECT_ID!,
@@ -79,15 +76,14 @@ const app = await Spectrum({
   providers: [imessage.config()],
 });
 
-const store = withConfigure.localStore(); // Local quickstart only.
-
 const configureSpectrum = withConfigure({
   apiKey: process.env.CONFIGURE_API_KEY!,
   publishableKey: process.env.CONFIGURE_PUBLISHABLE_KEY!,
   agent: process.env.CONFIGURE_AGENT!,
-  store,
+  store: adapterStore,
   signIn: {
     displayName: "Configure",
+    linkMode: "minted",
   },
   connect: {
     mode: "intent",
@@ -105,22 +101,27 @@ for await (const [space, message] of app.messages) {
 }
 ```
 
-The handler only runs when the adapter has not already handled the turn by sending a sign-in link.
+Local quickstarts can keep:
 
-In production, replace `withConfigure.localStore()` with an implementation backed by the app's normal persistence layer. `sendOnce: true` is safe for the current plain `sign-in.me/{agent}` flow because that URL is not per-user or short-lived. Once the adapter uses minted URLs with `expiresAt`, resend suppression must become expiry-aware.
+```ts
+const store = withConfigure.localStore();
+```
+
+Production apps should back the store with their normal server-side persistence. The store persists adapter state only: sender mappings, approved Configure tokens, sign-in delivery state, completion journeys, and webhook idempotency. It does not store Configure user memories or profile data.
 
 ## Control-Plane Flow
 
 For each inbound Spectrum message:
 
 1. Claim the message for idempotency when `store.claimMessage()` is available.
-2. Derive the Configure subject key, thread key, external user id, and phone candidates.
-3. Load any stored Configure token for the subject.
-4. Validate the stored token according to the configured policy.
-5. If no valid token exists, attempt Configure phone recognition when phone candidates are available.
-6. Build a `ctx` object with linked, recognized, approved, profile runtime, and helper methods.
-7. If `ctx.linked` is false and the configured connect policy says to send a link, send the hosted sign-in message and stop.
-8. Otherwise call the developer's handler.
+2. Derive the Configure subject key, thread key, external user id, channel, and phone candidates from Spectrum `space` and `message`.
+3. Extract a Photon signed subject token when Spectrum/provider metadata exposes one.
+4. Load any stored Configure token for the subject.
+5. Validate the stored token according to the configured policy.
+6. If no valid token exists, attempt Configure recognition from phone candidates and, later, signed subject token evidence.
+7. Build a `ctx` object with linked, recognized, approved, profile runtime, and helper methods.
+8. If `ctx.linked` is false and the configured connect policy says to send a link, create the hosted URL, send it, persist delivery state, and stop.
+9. Otherwise call the developer's handler.
 
 The model is not asked whether auth is needed. The adapter decides from structured state.
 
@@ -132,7 +133,7 @@ type MessageAuthState =
       status: "approved";
       token: string;
       userId?: string;
-      source: "stored_token" | "phone_recognition" | "photon";
+      source: "stored_token" | "phone_recognition" | "signed_subject";
     }
   | {
       status: "recognized_unapproved";
@@ -159,191 +160,229 @@ type ConnectorIssue = {
 };
 ```
 
-The current adapter represents most of this through `ctx.linked`, `ctx.recognized`, `ctx.approved`, `ctx.identity`, and `ctx.recognition`. Reconnect is future work.
+The current adapter represents most of this through `ctx.linked`, `ctx.recognized`, `ctx.approved`, `ctx.identity`, and `ctx.recognition`. Reconnect and signed-subject recognition are future work.
 
-## Link Generation
+## Configure URL Minting API
 
-### Current Plain Flow
+### Endpoint
 
-When no completion journey is configured, the default link is:
+Add a server-side endpoint:
 
-```txt
-https://sign-in.me/{agent}
+```http
+POST /v1/auth/sign-in/message-url
+X-API-Key: sk_...
+X-Agent: {agent}
+Content-Type: application/json
 ```
 
-This is appropriate for a text/message thread because:
+This endpoint requires `requireAgent` and `requireSecretKey`. It should not accept publishable keys.
 
-- the hosted Configure OTP flow is public
-- publishable-key query params are not required for the plain flow
-- the agent can re-recognize the sender after the user completes sign-in
-- the URL is readable and professional in a message
-
-### Existing Completion Flow
-
-When `messageCompleteUrl` is configured, the adapter preserves the verbose URL path with journey metadata. That flow is for apps that want the hosted page to call back into the agent service and save the returned token without relying on a later inbound user message.
-
-### Future Minted Flow
-
-When Jon's URL minting API is available, the adapter should call it from the same control-plane slot currently occupied by `ctx.signInUrl()`.
-
-Expected request shape:
+### Request
 
 ```ts
-type MintMessageUrlRequest = {
+type CreateMessageSignInUrlRequest = {
   reason: "signin" | "reconnect" | "permissions";
-  agent: string;
   channel: "sms" | "imessage" | "whatsapp" | "slack" | "spectrum" | string;
-  subjectId?: string;
+
+  subject: {
+    key: string;
+    externalId: string;
+    senderId?: string;
+  };
+
+  thread?: {
+    key?: string;
+    spaceId?: string;
+    messageId?: string;
+  };
+
   subjectToken?: string;
-  spaceId?: string;
-  messageId?: string;
   connectors?: string[];
+  displayName?: string;
+  agentLogo?: string;
+  theme?: "light" | "dark";
   returnMode?: "message";
   idempotencyKey?: string;
 };
 ```
 
-Expected response shape:
+Notes:
+
+- `subject.key` is the adapter's stable subject key, such as `sp_...`.
+- `subject.externalId` is the developer-scoped fallback external id, such as `spectrum:sp_...`.
+- `subjectToken` is an optional Photon signed subject token. It is server-side only and must not be sent to the model.
+- Do not put raw phone numbers in the minted URL.
+- Phone candidates, if needed for recognition, should remain part of recognition APIs rather than the URL minting request.
+
+### Response
 
 ```ts
-type MintMessageUrlResponse = {
+type CreateMessageSignInUrlResponse = {
   url: string;
-  expiresAt?: string;
+  code: string;
   reason: "signin" | "reconnect" | "permissions";
+  expiresAt: string;
   idempotencyKey?: string;
 };
 ```
 
-The adapter API should not force developers to care whether the returned URL is plain, minted, signed, or reconnect-specific.
-
-Minted URLs that include `expiresAt` must not be blocked forever by a previous `signInSentAt`. The adapter should store the minted URL expiration or a resend-after timestamp and allow a fresh link once the previous link has expired. `sendOnce` should mean "send at most one still-valid link for this subject," not "never send another link."
-
-## Reconnect
-
-Reconnect should use the same hosted URL minting path when it is available.
-
-The adapter/runtime should treat these as reconnect signals:
-
-- `tool_not_connected`
-- `provider_account_missing`
-- `provider_scope_missing`
-- `insufficient_permissions`
-- connector state with `reconnectRequired: true`
-
-When reconnect is detected, the adapter should send a hosted reconnect link and stop the turn if policy is `auto`.
-
-Example user-facing message:
+The returned URL should normally be:
 
 ```txt
-Reconnect Gmail to continue: {url}
+https://sign-in.me/{agent}/{code}
 ```
 
-Reconnect may initially be unsupported by the minting API. The request shape should still reserve `reason: "reconnect"` and `connectors` so the adapter does not need a breaking change later.
+The code is opaque and short-lived. It should be safe to display in a message thread but useless without Configure's hosted surface.
 
-## Relation To SDK Guidance Injection
+### Backend Storage
 
-The GitHub issue for guidance injection is about improving model behavior by shipping Configure guidance through SDK-owned text slots:
+Add a table for minted message links. Suggested name:
 
-- tool descriptions
-- tool results
-- optional hoistable guidance strings
+```sql
+create table message_sign_in_links (
+  id uuid primary key default gen_random_uuid(),
+  code_hash text not null unique,
+  developer_account_id uuid not null references developer_accounts(id) on delete cascade,
+  agent text not null,
+  reason text not null check (reason in ('signin', 'reconnect', 'permissions')),
+  channel text not null,
+  subject_key text not null,
+  external_id text not null,
+  sender_id text,
+  thread_key text,
+  space_id text,
+  message_id text,
+  subject_token_hash text,
+  connectors jsonb,
+  display_name text,
+  agent_logo text,
+  theme text,
+  return_mode text not null default 'message',
+  idempotency_key text,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null,
+  consumed_at timestamptz,
+  completed_at timestamptz
+);
 
-That work is useful, but it should not be responsible for sign-in or reconnect correctness.
+create unique index message_sign_in_links_idempotency_idx
+  on message_sign_in_links(developer_account_id, agent, idempotency_key)
+  where idempotency_key is not null;
 
-Guidance injection is lower authority than the system prompt and should be treated as a nudge. Auth and reconnect link delivery are deterministic control-plane actions and should be enforced by the adapter before or around model execution.
-
-Recommended separation:
-
-- **Adapter control plane:** validates/recognizes identity, sends sign-in/reconnect links, stores tokens, handles idempotency.
-- **Model guidance:** explains how to use Configure profile/tool results responsibly after the adapter has allowed the model to run.
-
-## Quickstart Cleanup
-
-The quickstart should stop putting `ctx.signInUrl()` into model/system prompt text.
-
-Current anti-pattern:
-
-```ts
-const system = profileHasData(profile)
-  ? `${STYLE}\n\nWhat Configure already remembers about this user:\n${JSON.stringify(profile, null, 2)}`
-  : `${STYLE}\n\nYou don't have a profile for them yet. When they ask who they are or how this works, ` +
-    `invite them to load it by tapping this link (send it as its own message):\n${await ctx.signInUrl()}`;
+create index message_sign_in_links_subject_idx
+  on message_sign_in_links(developer_account_id, agent, subject_key, created_at desc);
 ```
 
-Preferred pattern:
+Use a hash of the code at rest, following the existing sign-in return-code pattern.
+
+### Expiry And Idempotency
+
+Recommended defaults:
+
+- TTL: 10 minutes for minted message links.
+- Idempotency: if the same `(developer, agent, idempotencyKey)` has an unexpired link with the same reason and subject, return the existing URL.
+- If the previous link is expired, mint a replacement.
+- Expired links should render a hosted "link expired" state with a safe instruction to message the agent again.
+
+### Hosted Surface
+
+The hosted `sign-in.me/{agent}/{code}` page should:
+
+1. Look up the code through a public-safe lookup path or server-rendered loader.
+2. Validate the code exists, belongs to the agent path, and has not expired.
+3. Restore the existing Configure browser session when present.
+4. If a valid Configure session exists, skip phone OTP.
+5. If no session exists and no verified signed subject token can authenticate the user, fall back to the existing phone verification flow.
+6. Show consent/profile review for the agent.
+7. Apply connector setup when `connectors` is present.
+8. Mint or confirm the agent-scoped token through the existing approval path.
+9. Mark the message link completed.
+10. Show a message-return success state.
+
+The hosted page should not expose the agent token to browser-visible JS except through the existing, intended hosted flow boundaries. It should never expose a Configure secret key.
+
+### Signed Subject Tokens
+
+Support for Photon signed subject tokens can land after the basic minting API, but the data model and request shape should reserve it now.
+
+When available, Configure should verify the subject token server-side and treat it as channel identity evidence. The token should be checked for:
+
+- issuer
+- audience
+- expiration
+- channel/project identity
+- subject id
+- phone or verified contact claim when present
+- signature against Photon-provided keys
+
+If the signed subject token identifies a federated Configure user that already approved the agent, the hosted page can skip OTP and go directly to consent/success as appropriate.
+
+If the signed subject token only identifies a channel-local subject, it can still bind the minted link to the message subject and help future recognition, but it must not grant cross-agent profile access by itself.
+
+## TypeScript SDK
+
+Add an SDK method on `auth`:
 
 ```ts
-const configureSpectrum = withConfigure({
-  apiKey,
-  publishableKey,
-  agent,
-  store,
-  signIn: {
-    displayName: "Configure",
-    agentPhone: process.env.AGENT_PHONE_NUMBER,
+const result = await configure.auth.createMessageSignInUrl({
+  reason: "signin",
+  channel: "imessage",
+  subject: {
+    key: ctx.subject.key,
+    externalId: ctx.subject.externalId,
+    senderId: ctx.subject.senderId,
   },
-  connect: {
-    mode: "intent",
-    sendOnce: true,
-    behavior: "send-and-stop",
-    message: "Connect your Configure profile: {url}",
+  thread: {
+    key: ctx.thread.key,
+    spaceId: ctx.thread.spaceId,
+    messageId: ctx.message.id,
   },
+  subjectToken,
+  idempotencyKey,
 });
 ```
 
-Then the model prompt can describe only the agent's behavior and available context:
+Suggested types:
 
 ```ts
-const { profile } = await ctx.profile.read();
-const system = ctx.linked || profileHasData(profile)
-  ? `${STYLE}\n\nWhat Configure already remembers about this user:\n${JSON.stringify(profile, null, 2)}`
-  : `${STYLE}\n\nNo approved Configure profile is available for this sender yet. Do not claim personal context you do not have.`;
-```
+export type MessageSignInReason = "signin" | "reconnect" | "permissions";
 
-If the product wants a sign-in link on first contact rather than only on connect intent, use:
+export interface CreateMessageSignInUrlOptions {
+  reason: MessageSignInReason;
+  channel: string;
+  subject: {
+    key: string;
+    externalId: string;
+    senderId?: string;
+  };
+  thread?: {
+    key?: string;
+    spaceId?: string;
+    messageId?: string;
+  };
+  subjectToken?: string;
+  connectors?: string[];
+  displayName?: string;
+  agentLogo?: string;
+  theme?: "light" | "dark";
+  returnMode?: "message";
+  idempotencyKey?: string;
+}
 
-```ts
-connect: {
-  mode: "first-message",
-  sendOnce: true,
-  behavior: "send-and-stop",
+export interface CreateMessageSignInUrlResult {
+  url: string;
+  code: string;
+  reason: MessageSignInReason;
+  expiresAt: string;
+  idempotencyKey?: string;
 }
 ```
 
-That is a product choice, not a model instruction.
+This method is server-side only because it uses the secret key.
 
-## Security Requirements
+## Spectrum Adapter Changes
 
-- Keep `sk_` keys server-side.
-- Keep Configure agent tokens server-side.
-- Do not pass signed Photon claims to the model.
-- Do not log raw phone candidates, tokens, full webhook headers, or full message bodies.
-- Treat recognition as identity evidence, not authorization.
-- Treat `ctx.linked` as the approved-token signal.
-- Use idempotency keys for webhook retries and URL minting.
-- Keep link minting audited and rate-limited.
-- Do not reveal federated or cross-agent profile contents before approval. Developer-scoped unlinked context can still be used under Configure's normal unlinked-user boundary.
-
-## Implementation Phases
-
-### Phase 1: Current Adapter And Quickstart
-
-- Use clean `sign-in.me/{agent}` links for the plain flow.
-- Configure quickstart with adapter-owned `connect` behavior.
-- Remove sign-in URL injection from the model prompt.
-- Keep `connect.mode` defaulting to `manual` in the package.
-
-Status: complete for the current plain-link path.
-
-### Phase 2: URL Minting API Integration
-
-- Add an internal adapter URL provider that can call Jon's minting API.
-- Preserve `ctx.signInUrl()` as the public helper.
-- Route plain, completion, and minted flows through one internal abstraction.
-- Add idempotency support when minting links.
-- Track minted URL expiration so `sendOnce` does not suppress replacement links after expiry.
-
-Recommended implementation shape:
+Add a single internal URL provider so plain, completion, and minted flows share one path:
 
 ```ts
 type ConfigureSpectrumUrlProvider = (input: ConfigureSpectrumUrlRequest) =>
@@ -362,12 +401,27 @@ type ConfigureSpectrumUrlResult = {
 };
 ```
 
-The default provider should keep today's behavior:
+Public adapter options:
 
-- return `https://sign-in.me/{agent}` for the plain flow
-- use the existing verbose Configure SDK URL when `messageCompleteUrl` or explicit overrides are present
+```ts
+const configureSpectrum = withConfigure({
+  apiKey,
+  publishableKey,
+  agent,
+  store,
+  signIn: {
+    linkMode: "minted", // "plain" | "minted" | "auto"
+  },
+});
+```
 
-The minted provider can be added as an option later without changing the developer handler:
+Recommended behavior:
+
+- `plain`: current `https://sign-in.me/{agent}` behavior.
+- `minted`: call `configure.auth.createMessageSignInUrl()`.
+- `auto`: call minted URL when the SDK/backend supports it; otherwise fall back to plain.
+
+The adapter should still support a custom provider for private preview testing:
 
 ```ts
 const configureSpectrum = withConfigure({
@@ -377,14 +431,17 @@ const configureSpectrum = withConfigure({
   store,
   signIn: {
     mintUrl: async (request) => {
-      // Calls Jon's API.
       return { url, expiresAt, idempotencyKey };
     },
   },
 });
 ```
 
-Store changes for minted URLs:
+`ctx.signInUrl()` remains the public helper. The developer handler does not change.
+
+## Adapter Store Changes
+
+Minted URLs that include `expiresAt` must not be blocked forever by a previous `signInSentAt`. Add fields:
 
 ```ts
 interface ConfigureSpectrumSubject {
@@ -392,30 +449,204 @@ interface ConfigureSpectrumSubject {
   signInExpiresAt?: string;
   signInIdempotencyKey?: string;
 }
+
+interface ConfigureSpectrumSubjectContext {
+  signInSentAt?: string;
+  signInExpiresAt?: string;
+}
 ```
 
-`shouldConnect()` should allow another link when `signInExpiresAt` is in the past. For plain links, `signInExpiresAt` can remain absent and `sendOnce` behaves as it does today.
+`sendOnce` should mean:
 
-Test cases to add:
+> Send at most one still-valid link for this subject and reason.
 
-- plain flow still returns `https://sign-in.me/{agent}` without query params
-- `sendOnce` suppresses a second plain link
-- minted provider is called for the configured signed/minted path
-- minted result stores `signInExpiresAt`
-- expired `signInExpiresAt` permits a replacement link
-- unexpired `signInExpiresAt` suppresses duplicate links
+For plain links, `signInExpiresAt` can remain absent and current behavior is preserved. For minted links, `shouldConnect()` should allow another link when `signInExpiresAt` is in the past.
 
-### Phase 3: Reconnect
+## Reconnect
+
+Reconnect should use the same hosted URL minting path:
+
+```ts
+await configure.auth.createMessageSignInUrl({
+  reason: "reconnect",
+  channel,
+  subject,
+  connectors: ["gmail"],
+  idempotencyKey,
+});
+```
+
+Reconnect signals:
+
+- `tool_not_connected`
+- `provider_account_missing`
+- `provider_scope_missing`
+- `insufficient_permissions`
+- connector state with `reconnectRequired: true`
+
+When reconnect is detected, the adapter should send a hosted reconnect link and stop the turn if policy is `auto`.
+
+Reconnect can initially fall back to normal sign-in copy if hosted reconnect-specific UI is not ready. The API should still reserve `reason: "reconnect"` and `connectors` now.
+
+## Recognition And Minting
+
+Recognition/state and URL minting should remain separate backend primitives.
+
+Recognition answers:
+
+> What is true about this sender?
+
+Minting answers:
+
+> Create a user-facing hosted URL for this sender and action.
+
+Keeping them separate improves auditability, rate limiting, and prevents accidental link creation during ordinary recognition checks.
+
+The adapter can orchestrate both internally, but backend endpoints should remain separate.
+
+## Why This Is Not A Tool Call
+
+A sign-in link is auth control plane, like redirecting to SSO before serving a web route.
+
+It should not be a model tool because:
+
+- it puts auth into the model hot path
+- it requires prompt instructions
+- it is less deterministic
+- it can produce awkward or incorrect UX
+- it weakens auditability and idempotency
+- it mixes identity and consent concerns with agent personality
+
+Configure tools remain useful after auth for profile and connector operations. Initial sign-in and reconnect handoffs should be adapter/runtime behavior.
+
+## Quickstart Cleanup
+
+The quickstart should continue to:
+
+- use adapter-owned `connect` behavior
+- avoid putting `ctx.signInUrl()` in model/system prompt text
+- use `ctx.linked || profileHasData(profile)` before including profile context
+- document that the current plain link flow depends on phone-backed sender evidence
+- switch to minted URLs once the backend/SDK method exists
+
+The model prompt should describe only the agent's behavior and available context:
+
+```ts
+const { profile } = await ctx.profile.read();
+const system = ctx.linked || profileHasData(profile)
+  ? `${STYLE}\n\nWhat Configure already remembers about this user:\n${JSON.stringify(profile, null, 2)}`
+  : `${STYLE}\n\nNo approved Configure profile is available for this sender yet. Do not claim personal context you do not have.`;
+```
+
+## Security Requirements
+
+- Keep `sk_` keys server-side.
+- Keep Configure agent tokens server-side.
+- Do not pass signed Photon claims to the model.
+- Do not log raw phone candidates, tokens, full webhook headers, full message bodies, or minted URL codes.
+- Treat recognition as identity evidence, not authorization.
+- Treat `ctx.linked` as the approved-token signal.
+- Use idempotency keys for webhook retries and URL minting.
+- Keep link minting audited and rate-limited.
+- Store only code hashes, not raw codes.
+- Do not reveal federated or cross-agent profile contents before approval. Developer-scoped unlinked context can still be used under Configure's normal unlinked-user boundary.
+
+## Implementation Phases
+
+### Phase 1: Current Adapter And Quickstart
+
+- Use clean `sign-in.me/{agent}` links for the plain flow.
+- Configure quickstart with adapter-owned `connect` behavior.
+- Remove sign-in URL injection from the model prompt.
+- Keep `connect.mode` defaulting to `manual` in the package.
+
+Status: complete for the current plain-link path.
+
+### Phase 2: Configure Message URL Minting
+
+Backend:
+
+- Add `message_sign_in_links` migration.
+- Add `POST /v1/auth/sign-in/message-url`.
+- Add code hashing, expiry, idempotency, audit events, and rate limits.
+- Add hosted lookup/completion handling for `sign-in.me/{agent}/{code}`.
+- Preserve existing hosted OTP/approval fallback.
+
+TypeScript SDK:
+
+- Add `auth.createMessageSignInUrl()`.
+- Export request/response types.
+- Document server-side secret-key requirement.
+
+Spectrum adapter:
+
+- Add internal URL provider.
+- Add `signIn.linkMode`.
+- Add optional `signIn.mintUrl` provider for private preview.
+- Route `ctx.signInUrl()` through the provider.
+- Add `signInExpiresAt` and `signInIdempotencyKey` store fields.
+- Make `sendOnce` expiry-aware.
+
+Quickstart:
+
+- Keep plain flow by default until backend is deployed.
+- Add a note or option showing `linkMode: "minted"` after the API is available.
+- Refresh vendored tarball after adapter changes.
+
+### Phase 3: Signed Subject Tokens
+
+- Confirm Photon signed subject token location in Spectrum objects.
+- Add adapter extraction with safe defaults.
+- Add backend verification and tests.
+- Add recognition path from signed subject token.
+- Allow OTP bypass only when token verification and existing Configure session/user binding are sound.
+
+### Phase 4: Reconnect
 
 - Add typed reconnect detection around Configure connector/tool failures.
 - Mint reconnect URLs with `reason: "reconnect"` and connector metadata.
 - Send reconnect links through Spectrum and stop the turn under auto policy.
 
-### Phase 4: Guidance
+### Phase 5: Guidance
 
 - Implement SDK guidance as tool descriptions/results or hoistable strings.
 - Keep guidance transparent and toggleable.
 - Do not rely on guidance for sign-in or reconnect enforcement.
+
+## Tests
+
+Backend tests:
+
+- `POST /v1/auth/sign-in/message-url` requires `sk_`.
+- `pk_` cannot mint URLs.
+- Missing subject key/external id fails validation.
+- Idempotency returns the same unexpired link.
+- Expired idempotent link is replaced.
+- Code hash is stored; raw code is not.
+- Hosted lookup rejects expired/unknown codes.
+- Hosted lookup rejects agent/code mismatch.
+- Reconnect request preserves reason/connectors.
+
+SDK tests:
+
+- `createMessageSignInUrl()` posts the expected body.
+- It maps snake_case and camelCase response fields.
+- It rejects malformed responses.
+
+Adapter tests:
+
+- plain flow still returns `https://sign-in.me/{agent}` without query params
+- `sendOnce` suppresses a second plain link
+- minted provider is called for `linkMode: "minted"`
+- minted result stores `signInExpiresAt`
+- expired `signInExpiresAt` permits a replacement link
+- unexpired `signInExpiresAt` suppresses duplicate links
+- developer handler does not run when the adapter sends a link
+
+Quickstart tests:
+
+- Typecheck against the refreshed adapter tarball.
+- Manual E2E with real Spectrum/iMessage line after backend deployment.
 
 ## Acceptance Criteria
 
@@ -423,18 +654,22 @@ Test cases to add:
 - The quickstart demonstrates adapter-owned sign-in delivery.
 - The model is not given a sign-in URL in its system prompt.
 - Plain message sign-in works without Photon signed-token support.
-- Future minted URLs can be introduced without changing the developer's handler.
+- Minted URLs can be introduced without changing the developer's handler.
 - Reconnect has a reserved URL minting shape.
 - Guidance injection is documented as a nudge, not the auth mechanism.
+- URL minting is auditable, rate-limited, idempotent, and short-lived.
 
 ## Handoff Checklist
 
 Before implementation starts, confirm:
 
-- Jon's minting endpoint path, auth headers, request fields, and response fields.
-- Whether Photon signed subject tokens arrive on the Spectrum `message`, `space`, or provider metadata.
-- Whether minted URLs are single-use, multi-use until expiry, or idempotent by `idempotencyKey`.
-- Whether reconnect is initially unsupported, normal-sign-in fallback, or a separate hosted mode.
+- Final endpoint path: recommended `POST /v1/auth/sign-in/message-url`.
+- Final hosted route: recommended `https://sign-in.me/{agent}/{code}`.
+- Message link TTL.
+- Rate-limit bucket and audit event names.
+- Whether initial reconnect falls back to normal sign-in UI or gets dedicated hosted copy.
+- Whether Photon signed subject token support is included in the first backend pass or reserved for the next pass.
+- Where Spectrum exposes signed subject tokens once Photon ships them.
 - Whether quickstart should stay on the vendored tarball until preview publish, or consume a local packed tarball from the adapter repo.
 
-The next implementation should not change the developer handler API unless Jon's API forces a new input that cannot be derived from Spectrum state.
+The next implementation should not change the developer handler API unless the backend requires input that cannot be derived from Spectrum state.
