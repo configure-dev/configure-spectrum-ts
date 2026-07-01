@@ -11,6 +11,10 @@ export type ProfileRuntime = ReturnType<Configure["profile"]>;
 
 export type ConfigureSpectrumConnectMode = "manual" | "intent" | "first-message";
 export type ConfigureSpectrumTokenValidation = "never" | "always" | "on-first-use";
+export type ConfigureSpectrumSignInMessage =
+  | string
+  | ((ctx: ConfigureSpectrumContext, url: string) => string | Promise<string>)
+  | ((url: string) => string | Promise<string>);
 
 export interface ConfigureSpectrumLogger {
   debug?(message: string, fields?: Record<string, unknown>): void;
@@ -34,7 +38,7 @@ export interface ConfigureSpectrumConnectOptions {
   intent?: RegExp | ((ctx: ConfigureSpectrumContext) => boolean | Promise<boolean>);
   sendOnce?: boolean;
   behavior?: "send-and-stop" | "send-and-continue";
-  message?: string | ((ctx: ConfigureSpectrumContext, url: string) => string | Promise<string>);
+  message?: ConfigureSpectrumSignInMessage;
 }
 
 export interface ConfigureSpectrumIdentityInput {
@@ -106,7 +110,6 @@ export interface ConfigureSpectrumStore {
 export interface ConfigureSpectrumSubjectContext {
   key: string;
   externalId: string;
-  phoneCandidates: string[];
   senderId?: string;
   signInSentAt?: string;
 }
@@ -138,7 +141,7 @@ export interface ConfigureSpectrumContext {
   signInUrl(options?: Partial<SignInUrlOptions>): Promise<string>;
   reconnectUrl(): string;
   replyWithSignIn(options?: {
-    message?: string | ((url: string) => string | Promise<string>);
+    message?: ConfigureSpectrumSignInMessage;
   }): Promise<void>;
 }
 
@@ -159,8 +162,7 @@ export interface ConfigureSpectrumCompleteResult {
 export type ConfigureSpectrumHandleResult =
   | { status: "handled" }
   | { status: "duplicate" }
-  | { status: "connect-link-sent" }
-  | { status: "skipped" };
+  | { status: "connect-link-sent" };
 
 export interface ConfigureSpectrum {
   resolve(space: Space, message: Message): Promise<ConfigureSpectrumContext>;
