@@ -1,14 +1,16 @@
 # Configure Message Auth for Spectrum
 
-Status: implementation baseline
+Status: implementation baseline; SDK line-registry follow-up required
 Owner: Configure
-Scope: `@configure-ai/spectrum-ts`, Configure quickstart message agent, Configure backend sign-in APIs, and the TypeScript SDK
+Scope: `@configure-ai/spectrum-ts`, Configure quickstart message agent, Configure backend sign-in APIs, and the canonical SDK packages
 
 ## Summary
 
 Configure sign-in, reconnect, and permission-review links should be delivered by the adapter before the developer's model handler runs. The model can receive identity/profile context after Configure state is resolved, but it should not decide when to send auth links or compose those links.
 
 This is the implementation companion to the package-shape review spec. That spec defines the public adapter boundary for Spectrum developers. This document defines the backend, SDK, adapter, and quickstart work needed to make message-bound sign-in links real.
+
+The backend is the trust boundary. The SDK is the public developer contract. Spectrum and quickstart are downstream teaching surfaces that should consume the SDK contract instead of carrying durable direct-HTTP knowledge.
 
 The current adapter already supports the hosted message flow:
 
@@ -38,10 +40,17 @@ As of this implementation baseline, the repos expose:
 - `POST /v1/auth/sign-in/code`
 - `POST /v1/auth/sign-in/exchange`
 - `POST /v1/auth/sign-in/message-url`
+- `GET /v1/auth/sign-in/message-lines`
+- `POST /v1/auth/sign-in/message-lines`
+- `DELETE /v1/auth/sign-in/message-lines`
 - `POST /v1/auth/sign-in/recognize-phone`
 - `POST /v1/auth/sign-in/validate`
 
 The message URL endpoint currently implements the conservative preview behavior: it validates the request, audits the attempt, and returns `mode: "plain"` until Photon signature verification is configured. It must not create `sign-in.me/{agent}/{code}` links without verified Photon-signed subject evidence.
+
+The backend now also has an agent-owned message-line registry. Message URL requests that include a return phone must match an active registry row for the API-key-resolved developer, agent, channel, and phone hash. The registry stores hashes and last4 only; raw return phones are supplied by the server-side agent at request time and must not be stored.
+
+`@configure-ai/spectrum-ts` currently registers return lines directly against these endpoints as a dogfooding bridge. The next canonical-package pass should move that call into the SDK, then refactor Spectrum to call `configure.auth.registerMessageLine()` instead of direct HTTP.
 
 ## Goals
 
@@ -50,6 +59,8 @@ The message URL endpoint currently implements the conservative preview behavior:
 - Send hosted sign-in links outside the model hot path.
 - Support the current plain `sign-in.me/{agent}` handoff as a fallback.
 - Add a Configure-owned message URL API for message handoffs.
+- Add Configure-owned message-line registry APIs for app/agent return-line binding.
+- Expose server-side SDK helpers for all message auth endpoints that developers should call.
 - Reserve reconnect and permission-review behavior for the same message URL surface.
 - Require verified Photon-signed subject evidence for code-bearing message links.
 - Continue to work without Photon-signed subject evidence by returning or building the plain sign-in fallback.
@@ -64,6 +75,7 @@ The message URL endpoint currently implements the conservative preview behavior:
 - Do not expose Configure secret keys, agent tokens, raw phone candidates, or signed Photon claims to the model.
 - Do not require new infrastructure from Spectrum developers just to use the adapter.
 - Do not build a separate reconnect protocol if reconnect can be represented by the same hosted message URL surface.
+- Do not ask every message-agent app to hand-roll direct HTTP calls for Configure-owned auth control plane.
 
 ## Target Developer Experience
 
@@ -222,6 +234,8 @@ type CreateMessageSignInUrlRequest = {
   connectors?: string[];
   displayName?: string;
   agentLogo?: string;
+  messageLinePhone?: string;
+  messageBody?: string;
   theme?: "light" | "dark";
   returnMode?: "message";
   idempotencyKey?: string;
@@ -234,6 +248,8 @@ Notes:
 - `subject.externalId` is the developer-scoped fallback external id, such as `spectrum:sp_...`.
 - `subjectToken` is the Photon-signed subject token when Spectrum exposes one. It is server-side only and must not be sent to the model.
 - A code-bearing `mode: "minted"` response requires a present and verified `subjectToken`. If it is absent or invalid, the endpoint should return `mode: "plain"` with `fallbackReason` and no `code`.
+- `messageLinePhone` is allowed only when the phone has been registered to the acting developer, agent, and channel through the message-line registry.
+- `messageBody` is reflected only when `messageLinePhone` is accepted.
 - Do not put raw phone numbers in the code-bearing URL.
 - Phone candidates, if needed for recognition, should remain part of recognition APIs rather than the message URL request.
 
@@ -276,6 +292,69 @@ https://sign-in.me/{agent}
 ```
 
 The plain response is not a magic link. It exists so callers can keep one message URL orchestration path while Configure refuses to create a message-bound code without verified Photon subject evidence.
+
+## Configure Message Line Registry API
+
+Message agents may include a return phone so the hosted sign-in page can send the user back to the same SMS/iMessage line. That phone is infrastructure, not user identity. It must be registered to the server-side agent before the message URL endpoint reflects it.
+
+### Endpoints
+
+```http
+GET /v1/auth/sign-in/message-lines
+POST /v1/auth/sign-in/message-lines
+DELETE /v1/auth/sign-in/message-lines
+X-API-Key: sk_...
+X-Agent: {agent}
+```
+
+All message-line endpoints require `requireAgent` and `requireSecretKey`. Publishable keys must not call them.
+
+### Registration Request
+
+```ts
+type RegisterMessageLineRequest = {
+  channel?: "imessage" | "sms" | "whatsapp" | "slack" | "spectrum" | string;
+  phone: string; // E.164
+  label?: string;
+  metadata?: Record<string, unknown>;
+};
+```
+
+`channel` defaults to `imessage` for backwards compatibility with the first dogfood agent. SDK and adapter callers should always pass the actual channel. The backend normalizes channels to stable lowercase identifiers.
+
+### Registry Response
+
+```ts
+type MessageLine = {
+  id: string;
+  channel: string;
+  phoneLast4: string;
+  label: string | null;
+  status: "active" | "revoked";
+  createdAt?: string;
+  updatedAt?: string;
+};
+```
+
+The response must never include the raw phone number. Registry storage must keep only:
+
+- developer account id
+- agent name resolved from the API key / `X-Agent`
+- channel
+- phone hash
+- phone last4
+- optional label
+- optional metadata
+- status and timestamps
+
+### Registry Semantics
+
+- `POST` is idempotent for `(developer, agent, channel, phone_hash)` and reactivates a revoked row.
+- `GET` lists active lines for the acting developer and agent.
+- `DELETE` revokes matching active lines; it should not hard-delete audit-relevant history.
+- `message-url` rejects `messageLinePhone` unless an active registry row exists.
+- Registry checks use the server-resolved developer and agent only. Request body values must never select another agent's namespace.
+- SDKs may provide friendly aliases such as `agentPhone`, but the backend canonical field is `messageLinePhone`.
 
 ### Backend Storage
 
@@ -363,9 +442,29 @@ If the signed subject token identifies a federated Configure user that already a
 
 If the signed subject token only identifies a channel-local subject, it can bind the code-bearing link to the message subject and help future recognition, but it must not grant cross-agent profile access by itself.
 
-## TypeScript SDK
+## Canonical SDK Contract
 
-Add an SDK method on `auth`:
+The canonical SDK should own the server-side developer contract for message auth. `configure.auth.createMessageSignInUrl()` already exists in the TypeScript SDK. The missing public contract is message-line registration.
+
+Add SDK methods on `auth`:
+
+```ts
+await configure.auth.registerMessageLine({
+  channel: "imessage",
+  phone: "+14155550123",
+  label: "Primary iMessage line",
+  metadata: { source: "spectrum" },
+});
+
+const { lines } = await configure.auth.listMessageLines();
+
+await configure.auth.revokeMessageLine({
+  channel: "imessage",
+  phone: "+14155550123",
+});
+```
+
+Then create the message URL with the existing SDK method:
 
 ```ts
 const result = await configure.auth.createMessageSignInUrl({
@@ -382,6 +481,8 @@ const result = await configure.auth.createMessageSignInUrl({
     messageId: ctx.message.id,
   },
   subjectToken,
+  messageLinePhone: "+14155550123",
+  messageBody: "Done signing in",
   idempotencyKey,
 });
 ```
@@ -390,6 +491,38 @@ Suggested types:
 
 ```ts
 export type MessageSignInReason = "signin" | "reconnect" | "permissions";
+
+export interface RegisterMessageLineOptions {
+  channel?: string;
+  phone: string;
+  label?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export type RevokeMessageLineOptions = Pick<RegisterMessageLineOptions, "channel" | "phone">;
+
+export interface MessageLine {
+  id: string;
+  channel: string;
+  phoneLast4: string;
+  label: string | null;
+  status: "active" | "revoked";
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface RegisterMessageLineResult {
+  line: MessageLine;
+}
+
+export interface ListMessageLinesResult {
+  lines: MessageLine[];
+}
+
+export interface RevokeMessageLineResult {
+  deleted: boolean;
+  lines: MessageLine[];
+}
 
 export interface CreateMessageSignInUrlOptions {
   reason: MessageSignInReason;
@@ -409,6 +542,9 @@ export interface CreateMessageSignInUrlOptions {
   displayName?: string;
   agentLogo?: string;
   theme?: "light" | "dark";
+  messageLinePhone?: string;
+  agentPhone?: string; // alias for messageLinePhone
+  messageBody?: string;
   returnMode?: "message";
   idempotencyKey?: string;
 }
@@ -427,7 +563,21 @@ export interface CreateMessageSignInUrlResult {
 }
 ```
 
-This method is server-side only because it uses the secret key.
+All methods in this section are server-side only because they use `sk_` keys. Do not expose them through browser bundles or publishable-key paths.
+
+`createMessageSignInUrl()` should not silently register a line by default. Registration is an infrastructure write and should remain explicit in the SDK surface. Adapters may hide the two-step sequence behind their own runtime helper:
+
+1. Resolve the current return line.
+2. Call `auth.registerMessageLine()` when a valid return line exists.
+3. Call `auth.createMessageSignInUrl()` with `messageLinePhone`.
+4. If registration fails, omit `messageLinePhone` and still request a plain hosted fallback.
+
+Implementation requirements:
+
+- TypeScript SDK (`configure`): add methods, exported types, unit tests, docs, and `llms.txt` updates.
+- Python SDK (`configure-ai`): add parity before public release if these methods are part of the public API surface.
+- Direct HTTP documentation remains as an escape hatch, not the happy path.
+- `sk_` enforcement belongs to the backend; SDK-side key naming checks are optional guardrails, not security.
 
 ## Spectrum Adapter Changes
 
@@ -472,8 +622,12 @@ const configureSpectrum = withConfigure({
 Recommended behavior:
 
 - `plain`: current `https://sign-in.me/{agent}` hosted behavior, optionally with validated message return metadata.
-- `auto`: call `configure.auth.createMessageSignInUrl()` when the SDK/backend supports it; use `mode: "minted"` responses when verification succeeds and plain fallback otherwise.
+- `auto`: resolve any reliable return line, register it through `configure.auth.registerMessageLine()`, then call `configure.auth.createMessageSignInUrl()`; use `mode: "minted"` responses when verification succeeds and plain fallback otherwise.
 - `minted`: private-preview/debug mode that requires the message URL API path. It must still accept `mode: "plain"` fallback responses and must never force a code-bearing URL without verified Photon-signed subject evidence.
+
+Until the canonical SDK exposes message-line registration, the adapter may keep a narrow direct-HTTP bridge for `/v1/auth/sign-in/message-lines`. That bridge is temporary. Once the SDK method ships, remove the bridge and route registration through `configure.auth.registerMessageLine()`.
+
+When registration fails, the adapter should drop `messageLinePhone` and `messageBody` from the message URL request and continue with the hosted fallback. A registration failure should not block the user from receiving a normal sign-in link.
 
 The adapter should still support a custom provider for private preview testing:
 
@@ -584,7 +738,8 @@ The quickstart should continue to:
 - avoid putting `ctx.signInUrl()` in model/system prompt text
 - use `ctx.linked || profileHasData(profile)` before including profile context
 - document that the current plain link flow depends on phone-backed sender evidence
-- switch to the message URL API once the backend/SDK method exists, while keeping code-bearing links gated on verified Photon signatures
+- consume the adapter package instead of hand-rolling message-line registration or URL minting
+- switch to SDK-backed message-line registration once the canonical SDK method exists, while keeping code-bearing links gated on verified Photon signatures
 
 The model prompt should describe only the agent's behavior and available context:
 
@@ -604,8 +759,10 @@ const system = ctx.linked || profileHasData(profile)
 - Treat recognition as identity evidence, not authorization.
 - Treat `ctx.linked` as the approved-token signal.
 - Use idempotency keys for webhook retries and message URL creation.
+- Register return lines before sending `messageLinePhone`; do not reflect arbitrary return phones.
 - Keep code-bearing link creation audited and rate-limited.
 - Store only code hashes, not raw codes.
+- Store only message-line hashes and last4; do not store raw line phones in the registry.
 - Do not reveal federated or cross-agent profile contents before approval. Developer-scoped unlinked context can still be used under Configure's normal unlinked-user boundary.
 
 ## Implementation Phases
@@ -627,6 +784,9 @@ Backend:
 
 - Add `message_sign_in_links` migration. **Baseline complete.**
 - Add `POST /v1/auth/sign-in/message-url`. **Baseline complete.**
+- Add `agent_message_lines` migration. **Baseline complete.**
+- Add `GET/POST/DELETE /v1/auth/sign-in/message-lines`. **Baseline complete.**
+- Require active registered message lines before reflecting `messageLinePhone`. **Baseline complete.**
 - Validate request shape, require `sk_`, audit attempts, and return `mode: "plain"` while signature verification is unavailable. **Baseline complete.**
 - Add code hashing, expiry, idempotency, audit events, and rate limits for `mode: "minted"` responses. **Remaining for signed-subject phase.**
 - Add a Photon signature verification boundary. Until Photon key discovery and claim format are configured, the endpoint should always return `mode: "plain"`.
@@ -640,6 +800,13 @@ TypeScript SDK:
 - Add `auth.createMessageSignInUrl()`. **Baseline complete.**
 - Export request/response types. **Baseline complete.**
 - Document server-side secret-key requirement. **Baseline complete.**
+- Add `auth.registerMessageLine()`, `auth.listMessageLines()`, and `auth.revokeMessageLine()`. **Next.**
+- Export message-line request/response types. **Next.**
+- Add SDK docs, `llms.txt`, and examples for line registration before URL creation. **Next.**
+
+Python SDK:
+
+- Add parity for public message-line methods before any public release that documents them. **Next.**
 
 Spectrum adapter:
 
@@ -650,12 +817,13 @@ Spectrum adapter:
 - Ensure `ctx.signInUrl()` never emits a code-bearing magic link without verified Photon-signed subject evidence. **Baseline complete.**
 - Add `signInExpiresAt` and `signInIdempotencyKey` store fields. **Baseline complete.**
 - Make `sendOnce` expiry-aware. **Baseline complete.**
+- Register valid return lines before message URL creation. **Bridge complete through direct HTTP; refactor to SDK after canonical methods ship.**
 
 Quickstart:
 
-- Keep plain flow by default until backend is deployed.
-- Add a note or option showing `linkMode: "auto"` after the API is available. **Baseline complete in adapter docs; quickstart update depends on refreshed tarball.**
-- Refresh vendored tarball after adapter changes.
+- Use `linkMode: "auto"` to exercise the message URL path with plain fallback. **Baseline complete.**
+- Refresh vendored tarball after adapter changes. **Baseline complete for the current bridge.**
+- Refresh again after Spectrum moves from direct HTTP to SDK-backed message-line registration. **Next.**
 
 ### Phase 3: Signed Subject Extraction And Recognition
 
@@ -682,6 +850,11 @@ Backend tests:
 
 - `POST /v1/auth/sign-in/message-url` requires `sk_`.
 - `pk_` cannot call the message URL endpoint.
+- `GET/POST/DELETE /v1/auth/sign-in/message-lines` require `sk_`.
+- Message-line registration stores hash and last4, not the raw phone.
+- Message-line listing does not expose raw phone numbers.
+- Message-line revoke marks the line inactive for the acting developer and agent.
+- Message URL requests reject unregistered `messageLinePhone` before creating a URL.
 - Missing subject key/external id fails validation.
 - Missing Photon signature returns a plain fallback response and creates no message-link row.
 - Invalid Photon signature returns `mode: "plain"` with `fallbackReason: "subject_signature_invalid"` and creates no message-link row.
@@ -699,12 +872,18 @@ SDK tests:
 - `createMessageSignInUrl()` posts the expected body.
 - It maps minted and plain fallback responses.
 - It rejects malformed responses.
+- `registerMessageLine()` posts channel, phone, label, and metadata to `/message-lines`.
+- `listMessageLines()` maps registry rows without raw phones.
+- `revokeMessageLine()` sends `DELETE` and maps revoked rows.
+- SDK docs/types export the message-line types from the public package root.
 
 Adapter tests:
 
 - plain flow still returns a hosted `https://sign-in.me/{agent}` URL
 - dedicated-line iMessage spaces pass the routed E.164 line as return metadata
 - shared-mode iMessage spaces do not pass `shared` as a return phone
+- `auto` mode registers a valid return line before requesting a message URL
+- registration failure omits return-phone metadata and still returns a hosted fallback
 - `sendOnce` suppresses a second plain link
 - message URL provider is called when policy requests Configure-owned message URL orchestration
 - `mode: "minted"` result stores `signInExpiresAt`
@@ -724,6 +903,8 @@ Quickstart tests:
 - The quickstart demonstrates adapter-owned sign-in delivery.
 - The model is not given a sign-in URL in its system prompt.
 - Plain message sign-in works without Photon signed-token support.
+- Return-phone metadata is reflected only for registered agent-owned message lines.
+- Developers can register/list/revoke message lines through the canonical SDK, not by copying raw HTTP.
 - Magic-code links are never generated without verified Photon-signed subject evidence.
 - Code-bearing message URLs can be introduced without changing the developer's handler.
 - Reconnect has a reserved message URL shape.
@@ -742,5 +923,7 @@ Before implementation starts, confirm:
 - Final Photon signature contract: issuer, audience, key discovery, claim names, and accepted channels.
 - Where Spectrum exposes signed subject tokens once Photon ships them.
 - Whether quickstart should stay on the vendored tarball until preview publish, or consume a local packed tarball from the adapter repo.
+- Whether the TypeScript SDK message-line methods ship before or with the next Spectrum tarball.
+- Whether Python SDK parity is required for the same public release or can be explicitly deferred.
 
 The next implementation should not change the developer handler API unless the backend requires input that cannot be derived from Spectrum state.
