@@ -18,6 +18,14 @@ This store only persists adapter state. It does not store Configure user memorie
 
 Use Spectrum's webhook adapters for raw body handling and signature verification. This adapter composes inside Spectrum's `onMessage` callback.
 
+## Message Return
+
+For Spectrum iMessage dedicated-line spaces, the adapter uses Spectrum's routed `space.phone` value when it is a valid E.164 phone number. That lets Configure return the user through the same message line without app code building hosted URL parameters.
+
+If Photon exposes the current sending line through an API instead of `space.phone`, pass `signIn.agentPhone` as a sync or async resolver. The adapter calls it when building sign-in and reconnect links, validates the result as E.164, and omits invalid values.
+
+If the space is shared-mode (`shared`), local-mode, blank, or otherwise not a valid phone number, the adapter omits the return phone and leaves Configure on the hosted completion fallback. Do not store or pass shared-mode sentinels as phone numbers.
+
 ## Tokens
 
 Keep Configure agent tokens server-side. The default stored-token validation policy is `on-first-use`: the adapter validates a stored token before its first linked use in the current process and caches the validation result in memory.

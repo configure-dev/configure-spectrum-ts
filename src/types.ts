@@ -22,6 +22,9 @@ export type ConfigureSpectrumSignInMessage =
   | string
   | ((ctx: ConfigureSpectrumContext, url: string) => string | Promise<string>)
   | ((url: string) => string | Promise<string>);
+export type ConfigureSpectrumAgentPhone =
+  | string
+  | ((ctx: ConfigureSpectrumContext) => string | null | undefined | Promise<string | null | undefined>);
 
 export interface ConfigureSpectrumLogger {
   debug?(message: string, fields?: Record<string, unknown>): void;
@@ -32,7 +35,7 @@ export interface ConfigureSpectrumLogger {
 export interface ConfigureSpectrumSignInOptions {
   displayName?: string;
   agentLogo?: string;
-  agentPhone?: string;
+  agentPhone?: ConfigureSpectrumAgentPhone;
   connectors?: ConnectorName[] | string;
   messageBody?: string;
   messageCompleteUrl?: string;

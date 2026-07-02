@@ -10,13 +10,13 @@ Configure sign-in, reconnect, and permission-review links should be delivered by
 
 This is the implementation companion to the package-shape review spec. That spec defines the public adapter boundary for Spectrum developers. This document defines the backend, SDK, adapter, and quickstart work needed to make message-bound sign-in links real.
 
-The current adapter already supports the plain message flow:
+The current adapter already supports the hosted message flow:
 
 ```txt
 https://sign-in.me/{agent}
 ```
 
-That path is the working fallback today, but it depends on phone-backed sender evidence after sign-in. To support cleaner Spectrum handoffs and channel-local subjects, Configure should own a message URL API that can return code-bearing links when Photon provides signed subject evidence.
+That path is the working fallback today. When Spectrum exposes a reliable iMessage return line, the adapter can add message return metadata to the hosted URL without involving the model. To support cleaner Spectrum handoffs and channel-local subjects, Configure should own a message URL API that can return code-bearing links when Photon provides signed subject evidence.
 
 The target code-bearing URL shape is:
 
@@ -31,7 +31,7 @@ The code is an opaque, short-lived Configure record. It is not a token, not a ph
 As of this implementation baseline, the repos expose:
 
 - `ctx.signInUrl()` in `@configure-ai/spectrum-ts`
-- clean plain links for the no-completion message flow
+- hosted plain links for the no-completion message flow, with inferred message return metadata when Spectrum provides a reliable target
 - verbose SDK URLs when `messageCompleteUrl` or explicit URL overrides are present
 - `configure.auth.signInUrl()`
 - `configure.auth.createMessageSignInUrl()`
@@ -471,7 +471,7 @@ const configureSpectrum = withConfigure({
 
 Recommended behavior:
 
-- `plain`: current `https://sign-in.me/{agent}` behavior.
+- `plain`: current `https://sign-in.me/{agent}` hosted behavior, optionally with validated message return metadata.
 - `auto`: call `configure.auth.createMessageSignInUrl()` only when the SDK/backend supports it and a Photon-signed subject token is available; use `mode: "minted"` responses when verification succeeds and plain fallback otherwise.
 - `minted`: private-preview/debug mode that requests the message URL API when a subject token is available. It must still accept `mode: "plain"` fallback responses and must never force a code-bearing URL without verified Photon-signed subject evidence.
 
@@ -612,7 +612,9 @@ const system = ctx.linked || profileHasData(profile)
 
 ### Phase 1: Current Adapter And Quickstart
 
-- Use clean `sign-in.me/{agent}` links for the plain flow.
+- Use hosted `sign-in.me/{agent}` links for the plain flow.
+- Infer iMessage return metadata from Spectrum `space.phone` when it is a valid E.164 phone number.
+- Omit shared-mode sentinels and other non-phone values so the hosted completion fallback remains in place.
 - Configure quickstart with adapter-owned `connect` behavior.
 - Remove sign-in URL injection from the model prompt.
 - Keep `connect.mode` defaulting to `manual` in the package.
@@ -700,7 +702,9 @@ SDK tests:
 
 Adapter tests:
 
-- plain flow still returns `https://sign-in.me/{agent}` without query params
+- plain flow still returns a hosted `https://sign-in.me/{agent}` URL
+- dedicated-line iMessage spaces pass the routed E.164 line as return metadata
+- shared-mode iMessage spaces do not pass `shared` as a return phone
 - `sendOnce` suppresses a second plain link
 - message URL provider is called only when policy and subject evidence allow it
 - `mode: "minted"` result stores `signInExpiresAt`

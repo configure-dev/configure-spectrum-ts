@@ -11,7 +11,7 @@ Spectrum continues to own channels, providers, webhooks, message objects, replie
 - **Identity context before the response.** Resolve the sender before model execution, so your first generated reply can use the right identity state.
 - **Continuity across supported channels.** When Spectrum exposes a phone-backed sender identifier, the adapter can resolve that sender to the same approved Configure user across supported channels. When a channel only exposes channel-local identifiers, the adapter falls back to a stable developer-scoped user until the sender links with Configure.
 - **One profile surface.** Your handler uses `ctx.profile` for linked Configure users and unlinked developer-scoped users, so the agent code can stay consistent while access remains permission-aware.
-- **Hosted message SSO.** Generate or send `sign-in.me` links from the message thread. Configure handles verification, consent, connector setup, and agent approval.
+- **Hosted message SSO.** Generate or send `sign-in.me` links from the message thread. Configure handles verification, consent, connector setup, agent approval, and message return behavior when Spectrum exposes a reliable target.
 - **No Spectrum replacement.** Keep your existing `Spectrum()` app, providers, webhook adapters, and message loop.
 
 ## Install
@@ -71,7 +71,23 @@ for await (const [space, message] of app.messages) {
 
 When `connect` sends a hosted link, `handle()` returns before the handler runs. The model does not need to decide when to produce Configure sign-in URLs.
 
-By default, hosted links use the clean plain form: `https://sign-in.me/{agent}`. If your Spectrum channel provides signed subject evidence, set `signIn.linkMode` to `"auto"` so the adapter can ask Configure for a message-bound URL when verification is available. If the signature is missing or unsupported, the adapter keeps using the plain link.
+Hosted links use Configure's public `sign-in.me/{agent}` surface, so the model never needs to construct Configure URLs. For Spectrum iMessage dedicated-line spaces, the adapter reads Spectrum's routed line from `space.phone` and uses it when it is a valid E.164 phone number. Shared-mode sentinels such as `shared`, blank local-mode values, and other non-phone values are ignored, so Configure falls back to the normal hosted completion path instead of receiving an unreliable return phone.
+
+If Photon exposes the agent's current return line through an API instead of `space.phone`, pass an async resolver:
+
+```ts
+const configureSpectrum = withConfigure({
+  apiKey,
+  publishableKey,
+  agent: "your-agent",
+  store,
+  signIn: {
+    agentPhone: async (ctx) => photon.lines.currentPhone({ spaceId: ctx.space.id }),
+  },
+});
+```
+
+If your Spectrum channel provides signed subject evidence, set `signIn.linkMode` to `"auto"` so the adapter can ask Configure for a message-bound URL when verification is available. If the signature is missing or unsupported, the adapter keeps using the hosted fallback.
 
 `store` persists adapter state between messages: sender mappings, approved Configure tokens, sign-in delivery state, completion journeys, and webhook idempotency. It does not store Configure user memories or profile data. Most apps back this with the same persistence they already use for sessions, users, or webhook idempotency.
 
@@ -135,6 +151,14 @@ const configureSpectrum = withConfigure({
 ```
 
 `connect.mode` defaults to `manual`, so the adapter does not send links unless your app opts in. Use `mode: "first-message"` if your product should require Configure sign-in before the first model response.
+
+## Message Return Behavior
+
+Developers should not need to know Configure hosted URL parameters to return a user to the same message channel after sign-in. The adapter infers that from the current Spectrum `space` and `message` when Spectrum exposes a reliable target.
+
+For iMessage dedicated-line spaces, Spectrum includes the routed sending line on `space.phone`. When that value is a valid E.164 phone number, the adapter passes it to Configure for sign-in and reconnect links. In shared iMessage mode, local mode, or channels without a reliable message return target, the adapter omits the return phone and keeps the hosted Configure completion fallback.
+
+`signIn.agentPhone` remains available as an explicit fallback for apps that already know their return line. It can be a string or an async resolver that calls Photon for the current line. The resolved value is validated as E.164; values such as `shared` are ignored rather than sent to Configure.
 
 You can still send a link manually from application code:
 
@@ -200,6 +224,7 @@ server.use(
 - Choose a stored-token validation policy and document it.
 - Keep `CONFIGURE_API_KEY` server-side.
 - Keep `CONFIGURE_PUBLISHABLE_KEY` browser-safe; the adapter's default plain message link does not need to expose it in the URL.
+- Let the adapter infer iMessage return lines from Spectrum `space.phone` when possible, or pass `signIn.agentPhone` as a resolver around Photon's current-line API. Do not pass shared-mode sentinels as phone numbers.
 - Do not log tokens, phone numbers, full message bodies, or webhook headers.
 - Do not treat phone recognition as linked access unless Configure returns an approved token.
 

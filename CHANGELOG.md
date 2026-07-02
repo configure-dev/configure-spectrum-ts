@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Infers hosted message return metadata from Spectrum iMessage spaces. Dedicated-line iMessage spaces use the routed E.164 `space.phone`; shared-mode sentinels and other non-phone values are omitted so the hosted completion fallback remains in place.
+- Allows `signIn.agentPhone` to be a sync or async resolver, so apps can ask Photon for the current agent line when building hosted sign-in and reconnect URLs.
+- Updates the iMessage example so developers do not need a separate message-line phone environment variable when Spectrum already provides the routed line.
+
 ## 0.1.0-preview.0
 
 - Initial private preview scaffold for `@configure-ai/spectrum-ts`.
