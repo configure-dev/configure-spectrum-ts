@@ -394,10 +394,7 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
       return options.signIn.mintUrl(request);
     }
 
-    const auth = configure.auth as unknown as {
-      createMessageSignInUrl?: (input: MessageUrlPayload) => Promise<ConfigureSpectrumMessageUrlResult>;
-    };
-
+    const auth = configure.auth as unknown as ConfigureMessageAuth;
     const payload = await messageUrlPayload(request, options);
     const registeredPayload = await payloadWithRegisteredMessageLine(payload);
     if (typeof auth.createMessageSignInUrl === "function") {
@@ -430,6 +427,18 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
   }
 
   async function registerMessageLine(channel: string, phone: string): Promise<void> {
+    const registration = messageLineRegistrationPayload(channel, phone, options);
+    const auth = configure.auth as unknown as ConfigureMessageAuth;
+    if (typeof auth.registerMessageLine === "function") {
+      await auth.registerMessageLine(registration);
+      return;
+    }
+
+    // Compatibility for configure versions before auth.registerMessageLine().
+    await postMessageLineRegistration(registration);
+  }
+
+  async function postMessageLineRegistration(registration: MessageLineRegistrationPayload): Promise<void> {
     const fetchFn = options.fetch ?? globalThis.fetch;
     if (typeof fetchFn !== "function") {
       throw new Error("fetch is not available");
@@ -441,12 +450,7 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
         "X-API-Key": options.apiKey,
         "X-Agent": options.agent,
       },
-      body: JSON.stringify({
-        channel,
-        phone,
-        ...(options.signIn?.displayName ? { label: options.signIn.displayName } : {}),
-        metadata: { source: "configure-spectrum-ts" },
-      }),
+      body: JSON.stringify(registration),
     });
     if (!response.ok) {
       throw new Error(`message line registration failed with status ${response.status}`);
@@ -587,6 +591,18 @@ type MessageUrlPayload = {
   idempotencyKey?: string;
 };
 
+type MessageLineRegistrationPayload = {
+  channel: string;
+  phone: string;
+  label?: string;
+  metadata: Record<string, unknown>;
+};
+
+type ConfigureMessageAuth = {
+  createMessageSignInUrl?: (input: MessageUrlPayload) => Promise<ConfigureSpectrumMessageUrlResult>;
+  registerMessageLine?: (input: MessageLineRegistrationPayload) => Promise<unknown>;
+};
+
 function apiBaseUrl(options: ConfigureSpectrumOptions): string {
   return (options.baseUrl ?? "https://api.configure.dev").replace(/\/+$/, "");
 }
@@ -633,6 +649,19 @@ function messageUrlIdempotencyKey(ctx: ConfigureSpectrumContext, reason: Configu
 
 function messageLineRegistrationKey(channel: string, phone: string): string {
   return `${channel.toLowerCase().replace(/\s+/g, "")}:${phone}`;
+}
+
+function messageLineRegistrationPayload(
+  channel: string,
+  phone: string,
+  options: ConfigureSpectrumOptions
+): MessageLineRegistrationPayload {
+  return {
+    channel,
+    phone,
+    ...(options.signIn?.displayName ? { label: options.signIn.displayName } : {}),
+    metadata: { source: "configure-spectrum-ts" },
+  };
 }
 
 async function messageUrlPayload(request: {
