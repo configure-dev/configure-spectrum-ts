@@ -1,6 +1,6 @@
 import { Spectrum } from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
-import { withConfigure } from "@configure-ai/spectrum-ts";
+import { withConfigure } from "configure-spectrum";
 
 const app = await Spectrum({
   projectId: process.env.PHOTON_PROJECT_ID!,

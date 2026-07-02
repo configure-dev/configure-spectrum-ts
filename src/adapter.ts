@@ -660,7 +660,7 @@ function messageLineRegistrationPayload(
     channel,
     phone,
     ...(options.signIn?.displayName ? { label: options.signIn.displayName } : {}),
-    metadata: { source: "configure-spectrum-ts" },
+    metadata: { source: "configure-spectrum" },
   };
 }
 

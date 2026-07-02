@@ -1,13 +1,13 @@
 # Configure + Spectrum Adapter RFC
 
-`@configure-ai/spectrum-ts` is a server-side adapter for applications already using `spectrum-ts`.
+`configure-spectrum` is a server-side adapter for applications already using `spectrum-ts`.
 
 The adapter accepts Spectrum `space` and `message` objects, resolves the sender with the Configure SDK, and returns a Configure profile runtime for the current turn. Spectrum continues to own transport, providers, replies, and webhooks.
 
 ## Public Shape
 
 ```ts
-import { withConfigure } from "@configure-ai/spectrum-ts";
+import { withConfigure } from "configure-spectrum";
 
 const configureSpectrum = withConfigure({
   apiKey,
