@@ -248,6 +248,7 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
       recognized: input.identity.recognized,
       profile,
       signInUrl: async (overrides = {}) => {
+        const returnTarget = await messageReturnTarget(ctx, options);
         let journeyId = journeyByContext.get(ctx);
         if (!journeyId && options.signIn?.messageCompleteUrl) {
           if (!options.store.saveJourney) {
@@ -266,35 +267,38 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
             expiresAt: new Date(now.getTime() + 15 * 60 * 1000).toISOString(),
           });
         }
-        // A message sign-in link is just the agent's first-party hosted page. The
-        // hosted OTP flow is public, so the plain flow needs no publishable key or
-        // query params — a clean `sign-in.me/<agent>` is enough, and the agent
-        // re-recognizes the user by phone on their next message. The verbose form
-        // (pk + journey + connectors) is only used when a messageCompleteUrl journey
-        // is configured, or the caller passes explicit overrides.
+        // A message sign-in link is the agent's first-party hosted page. When
+        // Spectrum exposes a reliable return-to-message target, the adapter adds
+        // that structured return metadata here instead of asking the model or app
+        // prompt to know Configure URL parameters.
         if (!journeyId && Object.keys(overrides).length === 0) {
-          const messageUrl = await messageUrlForContext(ctx, input.derived, "signin", connectorIds(options.signIn?.connectors));
-          return messageUrl?.url ?? plainSignInUrl(options);
+          const messageUrl = await messageUrlForContext(ctx, input.derived, "signin", connectorIds(options.signIn?.connectors), returnTarget);
+          return messageUrl?.url ?? plainSignInUrl(options, returnTarget);
         }
-        return configure.auth.signInUrl({
+        const signInRequest = {
           publishableKey: options.publishableKey,
           delivery: "message",
           displayName: options.signIn?.displayName,
           agentLogo: options.signIn?.agentLogo,
-          messageLinePhone: options.signIn?.agentPhone,
-          messageBody: options.signIn?.messageBody,
+          messageLinePhone: returnTarget.messageLinePhone,
+          messageBody: returnTarget.messageBody,
           messageCompleteUrl: options.signIn?.messageCompleteUrl,
           connectors: options.signIn?.connectors,
           theme: options.signIn?.theme,
           signInOrigin: options.signIn?.signInOrigin,
           ...(journeyId ? { journeyId } : {}),
           ...overrides,
-        });
+        };
+        if ("messageLinePhone" in overrides) {
+          signInRequest.messageLinePhone = e164Phone(overrides.messageLinePhone);
+        }
+        return configure.auth.signInUrl(signInRequest);
       },
       reconnectUrl: async (reconnectOptions = {}) => {
         const reconnectConnectors = connectorIds(reconnectOptions.connectors ?? options.signIn?.connectors);
-        const messageUrl = await messageUrlForContext(ctx, input.derived, "reconnect", reconnectConnectors);
-        return messageUrl?.url ?? plainReconnectUrl(options, reconnectConnectors);
+        const returnTarget = await messageReturnTarget(ctx, options);
+        const messageUrl = await messageUrlForContext(ctx, input.derived, "reconnect", reconnectConnectors, returnTarget);
+        return messageUrl?.url ?? plainReconnectUrl(options, reconnectConnectors, returnTarget);
       },
       replyWithSignIn: async (replyOptions = {}) => {
         const url = await ctx.signInUrl();
@@ -327,7 +331,8 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
     ctx: ConfigureSpectrumContext,
     derived: Awaited<ReturnType<typeof deriveConfiguredIdentity>>,
     reason: ConfigureSpectrumMessageUrlReason,
-    connectorIds?: string[]
+    connectorIds?: string[],
+    returnTarget?: MessageReturnTarget
   ): Promise<ConfigureSpectrumMessageUrlResult | null> {
     const mode = options.signIn?.linkMode ?? "plain";
     if (mode === "plain") return Promise.resolve(null);
@@ -342,6 +347,7 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
       subjectToken: derived.subjectToken,
       connectorIds,
       idempotencyKey: messageUrlIdempotencyKey(ctx, reason, connectorIds),
+      returnTarget,
     };
     const pending = createMessageUrl(request).catch((error) => {
       options.logger?.warn?.("configure message URL creation failed; falling back to plain sign-in link", {
@@ -382,6 +388,7 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
     subjectToken?: string;
     connectorIds?: string[];
     idempotencyKey: string;
+    returnTarget?: MessageReturnTarget;
   }): Promise<ConfigureSpectrumMessageUrlResult> {
     if (options.signIn?.mintUrl) {
       return options.signIn.mintUrl(request);
@@ -405,7 +412,7 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
       }) => Promise<ConfigureSpectrumMessageUrlResult>;
     };
 
-    const payload = messageUrlPayload(request, options.signIn);
+    const payload = await messageUrlPayload(request, options);
     if (typeof auth.createMessageSignInUrl === "function") {
       return auth.createMessageSignInUrl(payload);
     }
@@ -429,11 +436,12 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
   }): Promise<ConfigureSpectrumMessageUrlResult> {
     const fetchFn = options.fetch ?? globalThis.fetch;
     if (typeof fetchFn !== "function") {
+      const returnTarget = messageReturnTargetFromPayload(payload);
       return {
         mode: "plain",
         url: payload.reason === "reconnect"
-          ? plainReconnectUrl(options, payload.connectors)
-          : plainSignInUrl(options),
+          ? plainReconnectUrl(options, payload.connectors, returnTarget)
+          : plainSignInUrl(options, returnTarget),
       };
     }
     const response = await fetchFn(`${(options.baseUrl ?? "https://api.configure.dev").replace(/\/+$/, "")}/v1/auth/sign-in/message-url`, {
@@ -538,17 +546,34 @@ function unique(values: string[]): string[] {
   return out;
 }
 
-function plainSignInUrl(options: ConfigureSpectrumOptions): string {
-  const origin = (options.signIn?.signInOrigin ?? "https://sign-in.me").replace(/\/+$/, "");
-  return `${origin}/${encodeURIComponent(options.agent)}`;
+interface MessageReturnTarget {
+  messageLinePhone?: string;
+  messageBody?: string;
 }
 
-function plainReconnectUrl(options: ConfigureSpectrumOptions, connectors?: string[]): string {
+function plainSignInUrl(options: ConfigureSpectrumOptions, returnTarget: MessageReturnTarget = {}): string {
+  const origin = (options.signIn?.signInOrigin ?? "https://sign-in.me").replace(/\/+$/, "");
+  const url = new URL(`${origin}/${encodeURIComponent(options.agent)}`);
+  if (returnTarget.messageLinePhone) {
+    url.searchParams.set("delivery", "message");
+    url.searchParams.set("message_line_phone", returnTarget.messageLinePhone);
+  }
+  if (returnTarget.messageLinePhone && returnTarget.messageBody) {
+    url.searchParams.set("message_body", returnTarget.messageBody);
+  }
+  return url.toString();
+}
+
+function plainReconnectUrl(
+  options: ConfigureSpectrumOptions,
+  connectors?: string[],
+  returnTarget: MessageReturnTarget = {}
+): string {
   return buildReconnectUrl(options.agent, {
     origin: options.signIn?.signInOrigin,
     connectors,
-    messageLinePhone: options.signIn?.agentPhone,
-    messageBody: options.signIn?.messageBody,
+    messageLinePhone: returnTarget.messageLinePhone,
+    messageBody: returnTarget.messageBody,
   });
 }
 
@@ -566,13 +591,16 @@ function messageUrlIdempotencyKey(ctx: ConfigureSpectrumContext, reason: Configu
   return `${messageKey(ctx.space, ctx.message)}:${reason}${suffix}`;
 }
 
-function messageUrlPayload(request: {
+async function messageUrlPayload(request: {
   reason: ConfigureSpectrumMessageUrlReason;
   ctx: ConfigureSpectrumContext;
   subjectToken?: string;
   connectorIds?: string[];
   idempotencyKey: string;
-}, signIn: ConfigureSpectrumSignInOptions | undefined) {
+  returnTarget?: MessageReturnTarget;
+}, options: ConfigureSpectrumOptions) {
+  const signIn = options.signIn;
+  const returnTarget = request.returnTarget ?? await messageReturnTarget(request.ctx, options);
   return {
     reason: request.reason,
     channel: request.ctx.platform,
@@ -591,11 +619,74 @@ function messageUrlPayload(request: {
     ...(signIn?.displayName ? { displayName: signIn.displayName } : {}),
     ...(signIn?.agentLogo ? { agentLogo: signIn.agentLogo } : {}),
     ...(signIn?.theme ? { theme: signIn.theme } : {}),
-    ...(signIn?.agentPhone ? { messageLinePhone: signIn.agentPhone } : {}),
-    ...(signIn?.messageBody ? { messageBody: signIn.messageBody } : {}),
+    ...(returnTarget.messageLinePhone ? { messageLinePhone: returnTarget.messageLinePhone } : {}),
+    ...(returnTarget.messageBody ? { messageBody: returnTarget.messageBody } : {}),
     ...(request.idempotencyKey ? { idempotencyKey: request.idempotencyKey } : {}),
     returnMode: "message" as const,
   };
+}
+
+async function messageReturnTarget(
+  ctx: ConfigureSpectrumContext,
+  options: ConfigureSpectrumOptions
+): Promise<MessageReturnTarget> {
+  const signIn = options.signIn;
+  const messageLinePhone = spectrumIMessageLinePhone(ctx.space, ctx.message)
+    ?? await configuredAgentPhone(ctx, options);
+  return messageLinePhone
+    ? {
+        messageLinePhone,
+        ...(signIn?.messageBody ? { messageBody: signIn.messageBody } : {}),
+      }
+    : {};
+}
+
+async function configuredAgentPhone(
+  ctx: ConfigureSpectrumContext,
+  options: ConfigureSpectrumOptions
+): Promise<string | undefined> {
+  const value = options.signIn?.agentPhone;
+  if (typeof value === "function") {
+    try {
+      return e164Phone(await value(ctx));
+    } catch (error) {
+      options.logger?.warn?.("configure spectrum agent phone resolver failed; omitting hosted return phone", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return undefined;
+    }
+  }
+  return e164Phone(value);
+}
+
+function messageReturnTargetFromPayload(payload: {
+  messageLinePhone?: string;
+  messageBody?: string;
+}): MessageReturnTarget {
+  const messageLinePhone = e164Phone(payload.messageLinePhone);
+  return messageLinePhone
+    ? {
+        messageLinePhone,
+        ...(payload.messageBody ? { messageBody: payload.messageBody } : {}),
+      }
+    : {};
+}
+
+function spectrumIMessageLinePhone(space: Space, message: Message): string | undefined {
+  if (!isIMessageContext(space, message)) return undefined;
+  return e164Phone(stringField(space, "phone"));
+}
+
+function isIMessageContext(space: Space, message: Message): boolean {
+  return [message.platform, stringField(space, "__platform")]
+    .filter((value): value is string => Boolean(value))
+    .some((value) => value.toLowerCase() === "imessage");
+}
+
+function e164Phone(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return /^\+[1-9]\d{6,14}$/.test(trimmed) ? trimmed : undefined;
 }
 
 function normalizeMessageUrlResult(value: unknown): ConfigureSpectrumMessageUrlResult {
@@ -643,4 +734,9 @@ function messageUrlFallbackReason(value: string | undefined): ConfigureSpectrumM
 
 function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function stringField(value: unknown, field: string): string | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  return stringValue((value as Record<string, unknown>)[field]);
 }

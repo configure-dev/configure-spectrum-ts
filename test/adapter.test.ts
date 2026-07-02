@@ -158,7 +158,7 @@ describe("withConfigure", () => {
     expect(store.savedJourneys).toBe(1);
   });
 
-  it("returns a clean sign-in link for the plain message flow (no pk, no params)", async () => {
+  it("returns a public hosted sign-in link with safe message return metadata", async () => {
     const store = withConfigure.localStore();
     const configureSpectrum = withConfigure({
       ...baseOptions,
@@ -169,8 +169,33 @@ describe("withConfigure", () => {
     const url = new URL(await ctx.signInUrl());
 
     expect(url.origin + url.pathname).toBe("https://sign-in.me/test-agent");
-    expect(url.search).toBe(""); // no ?pk=, no delivery, no message_line_phone
     expect(url.searchParams.get("pk")).toBeNull();
+    expect(url.searchParams.get("delivery")).toBe("message");
+    expect(url.searchParams.get("message_line_phone")).toBe("+14155550000");
+  });
+
+  it("uses a dynamic agent phone resolver when Spectrum has no routed line", async () => {
+    const store = withConfigure.localStore();
+    const agentPhone = vi.fn(async (ctx) => {
+      expect(ctx.thread.spaceId).toBe("space-1");
+      return "+14155550199";
+    });
+    const configureSpectrum = withConfigure({
+      ...baseOptions,
+      store,
+      signIn: { agentPhone, messageBody: "done!" },
+    });
+    const ctx = await configureSpectrum.resolve(
+      space({ __platform: "iMessage", type: "dm" }),
+      message({ platform: "iMessage", sender: { id: "+14155551234", address: "+14155551234" } })
+    );
+    const url = new URL(await ctx.signInUrl());
+
+    expect(agentPhone).toHaveBeenCalledTimes(1);
+    expect(url.origin + url.pathname).toBe("https://sign-in.me/test-agent");
+    expect(url.searchParams.get("delivery")).toBe("message");
+    expect(url.searchParams.get("message_line_phone")).toBe("+14155550199");
+    expect(url.searchParams.get("message_body")).toBe("done!");
   });
 
   it("uses the message URL API in auto mode when signed subject evidence exists", async () => {
@@ -210,6 +235,190 @@ describe("withConfigure", () => {
     const ctx = await configureSpectrum.resolve(space(), message({ sender: { id: "slack-user" }, platform: "slack" }));
 
     await expect(ctx.signInUrl()).resolves.toBe("https://sign-in.me/test-agent");
+  });
+
+  it("uses the routed iMessage line for first-message sign-in return metadata", async () => {
+    const store = withConfigure.localStore();
+    const fetch = jsonFetch(({ pathname, body }) => {
+      expect(pathname).toBe("/v1/auth/sign-in/message-url");
+      expect(body).toMatchObject({
+        reason: "signin",
+        channel: "iMessage",
+        subjectToken: "photon.signed.subject",
+        messageLinePhone: "+14155550123",
+        returnMode: "message",
+      });
+      return {
+        mode: "plain",
+        url: "https://sign-in.me/test-agent?delivery=message&message_line_phone=%2B14155550123",
+        fallbackReason: "subject_signature_unsupported",
+      };
+    });
+    const configureSpectrum = withConfigure({
+      ...baseOptions,
+      store,
+      fetch,
+      signIn: { linkMode: "auto" },
+      connect: {
+        mode: "first-message",
+        behavior: "send-and-stop",
+      },
+      identity: {
+        subjectKey: () => "subject-1",
+        externalId: () => "spectrum:subject-1",
+        subjectToken: () => "photon.signed.subject",
+      },
+    });
+    const inbound = message({ platform: "iMessage", sender: { id: "+14155551234", address: "+14155551234" } });
+    const handler = vi.fn();
+
+    await expect(
+      configureSpectrum.handle(
+        space({ __platform: "iMessage", phone: "+14155550123", type: "dm" }),
+        inbound,
+        handler
+      )
+    ).resolves.toEqual({ status: "connect-link-sent" });
+
+    expect(inbound.reply).toHaveBeenCalledWith(
+      "Connect your Configure profile: https://sign-in.me/test-agent?delivery=message&message_line_phone=%2B14155550123"
+    );
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("passes dynamic agent phone resolver output to the message URL API", async () => {
+    const store = withConfigure.localStore();
+    const agentPhone = vi.fn(async () => "+14155550999");
+    const fetch = jsonFetch(({ pathname, body }) => {
+      expect(pathname).toBe("/v1/auth/sign-in/message-url");
+      expect(body).toMatchObject({
+        reason: "signin",
+        channel: "iMessage",
+        subjectToken: "photon.signed.subject",
+        messageLinePhone: "+14155550999",
+        messageBody: "done!",
+        returnMode: "message",
+      });
+      return {
+        mode: "plain",
+        url: "https://sign-in.me/test-agent?delivery=message&message_line_phone=%2B14155550999",
+        fallbackReason: "subject_signature_unsupported",
+      };
+    });
+    const configureSpectrum = withConfigure({
+      ...baseOptions,
+      store,
+      fetch,
+      signIn: {
+        linkMode: "auto",
+        agentPhone,
+        messageBody: "done!",
+      },
+      identity: {
+        subjectKey: () => "subject-1",
+        externalId: () => "spectrum:subject-1",
+        subjectToken: () => "photon.signed.subject",
+      },
+    });
+    const ctx = await configureSpectrum.resolve(
+      space({ __platform: "iMessage", type: "dm" }),
+      message({ platform: "iMessage", sender: { id: "+14155551234", address: "+14155551234" } })
+    );
+
+    await expect(ctx.signInUrl()).resolves.toContain("message_line_phone=%2B14155550999");
+    expect(agentPhone).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not pass the iMessage shared-mode sentinel as a return phone", async () => {
+    const store = withConfigure.localStore();
+    const fetch = jsonFetch(({ pathname, body }) => {
+      expect(pathname).toBe("/v1/auth/sign-in/message-url");
+      expect(body).toMatchObject({
+        reason: "signin",
+        channel: "iMessage",
+        subjectToken: "photon.signed.subject",
+        returnMode: "message",
+      });
+      expect((body as Record<string, unknown>).messageLinePhone).toBeUndefined();
+      expect((body as Record<string, unknown>).messageBody).toBeUndefined();
+      return {
+        mode: "plain",
+        url: "https://sign-in.me/test-agent",
+        fallbackReason: "subject_signature_unsupported",
+      };
+    });
+    const configureSpectrum = withConfigure({
+      ...baseOptions,
+      store,
+      fetch,
+      signIn: {
+        linkMode: "auto",
+        agentPhone: "shared",
+        messageBody: "done!",
+      },
+      identity: {
+        subjectKey: () => "subject-1",
+        externalId: () => "spectrum:subject-1",
+        subjectToken: () => "photon.signed.subject",
+      },
+    });
+    const ctx = await configureSpectrum.resolve(
+      space({ __platform: "iMessage", phone: "shared", type: "dm" }),
+      message({ platform: "iMessage", sender: { id: "+14155551234", address: "+14155551234" } })
+    );
+
+    await expect(ctx.signInUrl()).resolves.toBe("https://sign-in.me/test-agent");
+  });
+
+  it("adds routed iMessage return metadata to hosted completion links when available", async () => {
+    const store = countingStore(withConfigure.localStore());
+    const configureSpectrum = withConfigure({
+      ...baseOptions,
+      store,
+      signIn: {
+        messageCompleteUrl: "https://agent.example.com/auth/configure/complete",
+        messageBody: "done!",
+      },
+    });
+    const ctx = await configureSpectrum.resolve(
+      space({ __platform: "iMessage", phone: "+14155550123", type: "dm" }),
+      message({ platform: "iMessage", sender: { id: "+14155551234", address: "+14155551234" } })
+    );
+    const url = new URL(await ctx.signInUrl());
+
+    expect(url.searchParams.get("pk")).toBe("pk_test");
+    expect(url.searchParams.get("journey")).toBeTruthy();
+    expect(url.searchParams.get("message_complete_url")).toBe("https://agent.example.com/auth/configure/complete");
+    expect(url.searchParams.get("delivery")).toBe("message");
+    expect(url.searchParams.get("message_line_phone")).toBe("+14155550123");
+    expect(url.searchParams.get("message_body")).toBe("done!");
+    expect(store.savedJourneys).toBe(1);
+  });
+
+  it("keeps hosted completion fallback when no reliable return phone is available", async () => {
+    const store = countingStore(withConfigure.localStore());
+    const configureSpectrum = withConfigure({
+      ...baseOptions,
+      store,
+      signIn: {
+        agentPhone: "shared",
+        messageCompleteUrl: "https://agent.example.com/auth/configure/complete",
+        messageBody: "done!",
+      },
+    });
+    const ctx = await configureSpectrum.resolve(
+      space({ __platform: "iMessage", phone: "shared", type: "dm" }),
+      message({ platform: "iMessage", sender: { id: "+14155551234", address: "+14155551234" } })
+    );
+    const url = new URL(await ctx.signInUrl());
+
+    expect(url.searchParams.get("pk")).toBe("pk_test");
+    expect(url.searchParams.get("journey")).toBeTruthy();
+    expect(url.searchParams.get("message_complete_url")).toBe("https://agent.example.com/auth/configure/complete");
+    expect(url.searchParams.get("delivery")).toBe("message");
+    expect(url.searchParams.get("message_line_phone")).toBeNull();
+    expect(url.searchParams.get("message_body")).toBeNull();
+    expect(store.savedJourneys).toBe(1);
   });
 
   it("builds targeted reconnect links with hosted message return metadata", async () => {
@@ -418,7 +627,7 @@ describe("withConfigure", () => {
   });
 });
 
-function space(overrides: Partial<Space> = {}): Space {
+function space(overrides: Partial<Space> & Record<string, unknown> = {}): Space {
   return {
     id: "space-1",
     __platform: "test",
