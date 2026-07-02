@@ -260,7 +260,7 @@ describe("withConfigure", () => {
         expect(body).toMatchObject({
           channel: "iMessage",
           phone: "+14155550123",
-          metadata: { source: "configure-spectrum-ts" },
+          metadata: { source: "configure-spectrum" },
         });
         return { line: { channel: "imessage", phoneLast4: "0123", status: "active" } };
       }
@@ -310,7 +310,7 @@ describe("withConfigure", () => {
         expect(body).toMatchObject({
           channel: "iMessage",
           phone: "+14155550123",
-          metadata: { source: "configure-spectrum-ts" },
+          metadata: { source: "configure-spectrum" },
         });
         return { line: { channel: "imessage", phoneLast4: "0123", status: "active" } };
       }
@@ -368,7 +368,7 @@ describe("withConfigure", () => {
         expect(body).toMatchObject({
           channel: "iMessage",
           phone: "+14155550999",
-          metadata: { source: "configure-spectrum-ts" },
+          metadata: { source: "configure-spectrum" },
         });
         return { line: { channel: "imessage", phoneLast4: "0999", status: "active" } };
       }
@@ -530,7 +530,7 @@ describe("withConfigure", () => {
         expect(body).toMatchObject({
           channel: "slack",
           phone: "+14155550000",
-          metadata: { source: "configure-spectrum-ts" },
+          metadata: { source: "configure-spectrum" },
         });
         return { line: { channel: "slack", phoneLast4: "0000", status: "active" } };
       }

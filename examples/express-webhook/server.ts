@@ -1,7 +1,7 @@
 import express from "express";
 import { Spectrum } from "spectrum-ts";
 import { spectrum } from "@spectrum-ts/express";
-import { withConfigure } from "@configure-ai/spectrum-ts";
+import { withConfigure } from "configure-spectrum";
 
 const app = await Spectrum({
   webhookSecret: process.env.SPECTRUM_WEBHOOK_SECRET!,

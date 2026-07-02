@@ -2,7 +2,7 @@
 
 Status: implementation baseline; SDK line-registry follow-up required
 Owner: Configure
-Scope: `@configure-ai/spectrum-ts`, Configure quickstart message agent, Configure backend sign-in APIs, and the canonical SDK packages
+Scope: `configure-spectrum`, Configure quickstart message agent, Configure backend sign-in APIs, and the canonical SDK packages
 
 ## Summary
 
@@ -32,7 +32,7 @@ The code is an opaque, short-lived Configure record. It is not a token, not a ph
 
 As of this implementation baseline, the repos expose:
 
-- `ctx.signInUrl()` in `@configure-ai/spectrum-ts`
+- `ctx.signInUrl()` in `configure-spectrum`
 - hosted plain links for the no-completion message flow, with inferred message return metadata when Spectrum provides a reliable target
 - verbose SDK URLs when `messageCompleteUrl` or explicit URL overrides are present
 - `configure.auth.signInUrl()`
@@ -50,7 +50,7 @@ The message URL endpoint currently implements the conservative preview behavior:
 
 The backend now also has an agent-owned message-line registry. Message URL requests that include a return phone must match an active registry row for the API-key-resolved developer, agent, channel, and phone hash. The registry stores hashes and last4 only; raw return phones are supplied by the server-side agent at request time and must not be stored.
 
-`@configure-ai/spectrum-ts` currently registers return lines directly against these endpoints as a dogfooding bridge. The next canonical-package pass should move that call into the SDK, then refactor Spectrum to call `configure.auth.registerMessageLine()` instead of direct HTTP.
+The adapter calls `configure.auth.registerMessageLine()` when the installed Configure SDK exposes it, and keeps a narrow direct-HTTP path only as a mixed-version bridge. The next canonical-package pass should remove that bridge after the minimum supported `configure` version includes the helper.
 
 ## Goals
 
@@ -84,7 +84,7 @@ Production-shaped usage:
 ```ts
 import { Spectrum } from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
-import { withConfigure } from "@configure-ai/spectrum-ts";
+import { withConfigure } from "configure-spectrum";
 import { adapterStore } from "./configure-spectrum-store";
 
 const app = await Spectrum({

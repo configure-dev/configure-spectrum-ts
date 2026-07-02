@@ -1,6 +1,6 @@
 # Configure SSO for Spectrum message handlers
 
-`@configure-ai/spectrum-ts` adds Configure sign-in and profile access to an existing Photon Spectrum (`spectrum-ts`) message handler.
+`configure-spectrum` adds Configure sign-in and profile access to an existing Photon Spectrum (`spectrum-ts`) message handler.
 
 It resolves the current sender before your handler runs, then provides a Configure profile runtime for the right access state. Approved users can receive personalized responses on the first generated turn. New or unlinked senders get a stable developer-scoped profile and a hosted message sign-in path.
 
@@ -19,7 +19,7 @@ Spectrum continues to own channels, providers, webhooks, message objects, replie
 Existing Spectrum apps can add the adapter:
 
 ```bash
-npm install @configure-ai/spectrum-ts
+npm install configure-spectrum
 ```
 
 New apps should install Spectrum according to [Photon's docs](https://photon.codes/docs/) before adding this package. If your package manager does not auto-install peer dependencies, install `spectrum-ts` explicitly.
@@ -28,15 +28,15 @@ Private preview installs can use a packed tarball until the package is published
 
 ```bash
 npm pack
-npm install ./configure-ai-spectrum-ts-0.1.0-preview.0.tgz
+npm install ./configure-spectrum-0.1.0-preview.0.tgz
 ```
 
-For deployable preview apps, commit the tarball in the consuming repo and reference it with a relative `file:` dependency. Replace that dependency with `@configure-ai/spectrum-ts` after npm publish.
+For deployable preview apps, commit the tarball in the consuming repo and reference it with a relative `file:` dependency. Replace that dependency with `configure-spectrum` after npm publish.
 
 ## Existing Handler
 
 ```ts
-import { withConfigure } from "@configure-ai/spectrum-ts";
+import { withConfigure } from "configure-spectrum";
 import { adapterStore } from "./configure-spectrum-store";
 
 const configureSpectrum = withConfigure({
@@ -191,7 +191,7 @@ Compose this adapter inside Spectrum's webhook adapters. Spectrum should handle 
 import express from "express";
 import { Spectrum } from "spectrum-ts";
 import { spectrum } from "@spectrum-ts/express";
-import { withConfigure } from "@configure-ai/spectrum-ts";
+import { withConfigure } from "configure-spectrum";
 
 const app = await Spectrum({
   webhookSecret: process.env.SPECTRUM_WEBHOOK_SECRET!,

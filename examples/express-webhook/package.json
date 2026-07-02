@@ -1,12 +1,12 @@
 {
-  "name": "@configure-ai/spectrum-ts-example-express-webhook",
+  "name": "configure-spectrum-example-express-webhook",
   "private": true,
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@configure-ai/spectrum-ts": "file:../..",
+    "configure-spectrum": "file:../..",
     "@spectrum-ts/express": "^8.1.0",
     "express": "^5.1.0",
     "spectrum-ts": "^8.1.0"
