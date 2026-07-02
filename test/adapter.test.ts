@@ -262,7 +262,7 @@ describe("withConfigure", () => {
           phone: "+14155550123",
           metadata: { source: "configure-spectrum" },
         });
-        return { line: { channel: "imessage", phoneLast4: "0123", status: "active" } };
+        return { line: { id: "line-imessage-0123", channel: "imessage", phoneLast4: "0123", status: "active" } };
       }
       expect(pathname).toBe("/v1/auth/sign-in/message-url");
       expect(body).toMatchObject({
@@ -312,7 +312,7 @@ describe("withConfigure", () => {
           phone: "+14155550123",
           metadata: { source: "configure-spectrum" },
         });
-        return { line: { channel: "imessage", phoneLast4: "0123", status: "active" } };
+        return { line: { id: "line-imessage-0123", channel: "imessage", phoneLast4: "0123", status: "active" } };
       }
       expect(pathname).toBe("/v1/auth/sign-in/message-url");
       expect(body).toMatchObject({
@@ -325,6 +325,7 @@ describe("withConfigure", () => {
       return {
         mode: "plain",
         url: "https://sign-in.me/test-agent?delivery=message&message_line_phone=%2B14155550123",
+        reason: "signin",
         fallbackReason: "subject_signature_unsupported",
       };
     });
@@ -370,7 +371,7 @@ describe("withConfigure", () => {
           phone: "+14155550999",
           metadata: { source: "configure-spectrum" },
         });
-        return { line: { channel: "imessage", phoneLast4: "0999", status: "active" } };
+        return { line: { id: "line-imessage-0999", channel: "imessage", phoneLast4: "0999", status: "active" } };
       }
       expect(pathname).toBe("/v1/auth/sign-in/message-url");
       expect(body).toMatchObject({
@@ -384,6 +385,7 @@ describe("withConfigure", () => {
       return {
         mode: "plain",
         url: "https://sign-in.me/test-agent?delivery=message&message_line_phone=%2B14155550999",
+        reason: "signin",
         fallbackReason: "subject_signature_unsupported",
       };
     });
@@ -426,6 +428,7 @@ describe("withConfigure", () => {
       return {
         mode: "plain",
         url: "https://sign-in.me/test-agent",
+        reason: "signin",
         fallbackReason: "subject_signature_unsupported",
       };
     });
@@ -532,7 +535,7 @@ describe("withConfigure", () => {
           phone: "+14155550000",
           metadata: { source: "configure-spectrum" },
         });
-        return { line: { channel: "slack", phoneLast4: "0000", status: "active" } };
+        return { line: { id: "line-slack-0000", channel: "slack", phoneLast4: "0000", status: "active" } };
       }
       expect(pathname).toBe("/v1/auth/sign-in/message-url");
       expect(body).toMatchObject({
@@ -552,6 +555,7 @@ describe("withConfigure", () => {
       return {
         mode: "plain",
         url: "https://sign-in.me/test-agent/reconnect?connectors=gmail",
+        reason: "reconnect",
         fallbackReason: "subject_signature_unsupported",
       };
     });
@@ -588,6 +592,8 @@ describe("withConfigure", () => {
       return {
         mode: "minted",
         url: "https://sign-in.me/test-agent/cfgmsg_123",
+        code: "cfgmsg_123",
+        reason: "signin",
         expiresAt,
         idempotencyKey: "slack:space-1:message-1:signin",
       };
