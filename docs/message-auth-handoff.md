@@ -444,9 +444,9 @@ If the signed subject token only identifies a channel-local subject, it can bind
 
 ## Canonical SDK Contract
 
-The canonical SDK should own the server-side developer contract for message auth. `configure.auth.createMessageSignInUrl()` already exists in the TypeScript SDK. The missing public contract is message-line registration.
+The canonical SDK owns the server-side developer contract for message auth. `configure.auth.createMessageSignInUrl()` handles hosted message URL creation, and the message-line registry helpers bind provider-owned return lines to the acting agent before a URL reflects them.
 
-Add SDK methods on `auth`:
+Use these SDK methods on `auth`:
 
 ```ts
 await configure.auth.registerMessageLine({
@@ -574,8 +574,8 @@ All methods in this section are server-side only because they use `sk_` keys. Do
 
 Implementation requirements:
 
-- TypeScript SDK (`configure`): add methods, exported types, unit tests, docs, and `llms.txt` updates.
-- Python SDK (`configure-ai`): add parity before public release if these methods are part of the public API surface.
+- TypeScript SDK (`configure`): add methods, exported types, unit tests, docs, and `llms.txt` updates. **Complete.**
+- Python SDK (`configure-ai`): add parity before public release if these methods are part of the public API surface. **Complete.**
 - Direct HTTP documentation remains as an escape hatch, not the happy path.
 - `sk_` enforcement belongs to the backend; SDK-side key naming checks are optional guardrails, not security.
 
@@ -625,7 +625,7 @@ Recommended behavior:
 - `auto`: resolve any reliable return line, register it through `configure.auth.registerMessageLine()`, then call `configure.auth.createMessageSignInUrl()`; use `mode: "minted"` responses when verification succeeds and plain fallback otherwise.
 - `minted`: private-preview/debug mode that requires the message URL API path. It must still accept `mode: "plain"` fallback responses and must never force a code-bearing URL without verified Photon-signed subject evidence.
 
-Until the canonical SDK exposes message-line registration, the adapter may keep a narrow direct-HTTP bridge for `/v1/auth/sign-in/message-lines`. That bridge is temporary. Once the SDK method ships, remove the bridge and route registration through `configure.auth.registerMessageLine()`.
+The adapter should call `configure.auth.registerMessageLine()` for return-line registration. During the mixed-version window before every downstream package depends on a published SDK with this helper, any direct HTTP fallback must stay narrow, internal, and easy to delete with the minimum `configure` version bump.
 
 When registration fails, the adapter should drop `messageLinePhone` and `messageBody` from the message URL request and continue with the hosted fallback. A registration failure should not block the user from receiving a normal sign-in link.
 
@@ -800,13 +800,13 @@ TypeScript SDK:
 - Add `auth.createMessageSignInUrl()`. **Baseline complete.**
 - Export request/response types. **Baseline complete.**
 - Document server-side secret-key requirement. **Baseline complete.**
-- Add `auth.registerMessageLine()`, `auth.listMessageLines()`, and `auth.revokeMessageLine()`. **Next.**
-- Export message-line request/response types. **Next.**
-- Add SDK docs, `llms.txt`, and examples for line registration before URL creation. **Next.**
+- Add `auth.registerMessageLine()`, `auth.listMessageLines()`, and `auth.revokeMessageLine()`. **Complete.**
+- Export message-line request/response types. **Complete.**
+- Add SDK docs, `llms.txt`, and examples for line registration before URL creation. **Complete.**
 
 Python SDK:
 
-- Add parity for public message-line methods before any public release that documents them. **Next.**
+- Add parity for public message-line methods before any public release that documents them. **Complete.**
 
 Spectrum adapter:
 
