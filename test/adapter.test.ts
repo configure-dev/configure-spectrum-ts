@@ -198,6 +198,22 @@ describe("withConfigure", () => {
     expect(url.searchParams.get("message_body")).toBe("done!");
   });
 
+  it("prefers explicit agent phone over Spectrum routed line metadata", async () => {
+    const store = withConfigure.localStore();
+    const configureSpectrum = withConfigure({
+      ...baseOptions,
+      store,
+      signIn: { agentPhone: "+14155550999" },
+    });
+    const ctx = await configureSpectrum.resolve(
+      space({ __platform: "iMessage", phone: "+14155550123", type: "dm" }),
+      message({ platform: "iMessage", sender: { id: "+14155551234", address: "+14155551234" } })
+    );
+    const url = new URL(await ctx.signInUrl());
+
+    expect(url.searchParams.get("message_line_phone")).toBe("+14155550999");
+  });
+
   it("uses the message URL API in auto mode when signed subject evidence exists", async () => {
     const store = withConfigure.localStore();
     const fetch = jsonFetch(({ pathname, body }) => {
@@ -240,6 +256,14 @@ describe("withConfigure", () => {
   it("uses the message URL API in auto mode for plain fallback links", async () => {
     const store = withConfigure.localStore();
     const fetch = jsonFetch(({ pathname, body }) => {
+      if (pathname === "/v1/auth/sign-in/message-lines") {
+        expect(body).toMatchObject({
+          channel: "iMessage",
+          phone: "+14155550123",
+          metadata: { source: "configure-spectrum-ts" },
+        });
+        return { line: { channel: "imessage", phoneLast4: "0123", status: "active" } };
+      }
       expect(pathname).toBe("/v1/auth/sign-in/message-url");
       expect(body).toMatchObject({
         reason: "signin",
@@ -282,6 +306,14 @@ describe("withConfigure", () => {
   it("uses the routed iMessage line for first-message sign-in return metadata", async () => {
     const store = withConfigure.localStore();
     const fetch = jsonFetch(({ pathname, body }) => {
+      if (pathname === "/v1/auth/sign-in/message-lines") {
+        expect(body).toMatchObject({
+          channel: "iMessage",
+          phone: "+14155550123",
+          metadata: { source: "configure-spectrum-ts" },
+        });
+        return { line: { channel: "imessage", phoneLast4: "0123", status: "active" } };
+      }
       expect(pathname).toBe("/v1/auth/sign-in/message-url");
       expect(body).toMatchObject({
         reason: "signin",
@@ -332,6 +364,14 @@ describe("withConfigure", () => {
     const store = withConfigure.localStore();
     const agentPhone = vi.fn(async () => "+14155550999");
     const fetch = jsonFetch(({ pathname, body }) => {
+      if (pathname === "/v1/auth/sign-in/message-lines") {
+        expect(body).toMatchObject({
+          channel: "iMessage",
+          phone: "+14155550999",
+          metadata: { source: "configure-spectrum-ts" },
+        });
+        return { line: { channel: "imessage", phoneLast4: "0999", status: "active" } };
+      }
       expect(pathname).toBe("/v1/auth/sign-in/message-url");
       expect(body).toMatchObject({
         reason: "signin",
@@ -486,6 +526,14 @@ describe("withConfigure", () => {
   it("uses the message URL API for reconnect in auto mode when signed subject evidence exists", async () => {
     const store = withConfigure.localStore();
     const fetch = jsonFetch(({ pathname, body }) => {
+      if (pathname === "/v1/auth/sign-in/message-lines") {
+        expect(body).toMatchObject({
+          channel: "slack",
+          phone: "+14155550000",
+          metadata: { source: "configure-spectrum-ts" },
+        });
+        return { line: { channel: "slack", phoneLast4: "0000", status: "active" } };
+      }
       expect(pathname).toBe("/v1/auth/sign-in/message-url");
       expect(body).toMatchObject({
         reason: "reconnect",
