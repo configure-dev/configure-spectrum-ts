@@ -127,7 +127,7 @@ const configureSpectrum = withConfigure({
 });
 ```
 
-`auto` should prefer a code-bearing message URL only when the backend, SDK, and verified Photon-signed subject evidence are all available. Otherwise it should fall back to the current plain `sign-in.me/{agent}` flow.
+`auto` should use the message URL API as the orchestration path. It prefers a code-bearing message URL only when the backend, SDK, and verified Photon-signed subject evidence are all available; otherwise the endpoint returns the current plain `sign-in.me/{agent}` flow.
 
 ## Control-Plane Flow
 
@@ -472,8 +472,8 @@ const configureSpectrum = withConfigure({
 Recommended behavior:
 
 - `plain`: current `https://sign-in.me/{agent}` hosted behavior, optionally with validated message return metadata.
-- `auto`: call `configure.auth.createMessageSignInUrl()` only when the SDK/backend supports it and a Photon-signed subject token is available; use `mode: "minted"` responses when verification succeeds and plain fallback otherwise.
-- `minted`: private-preview/debug mode that requests the message URL API when a subject token is available. It must still accept `mode: "plain"` fallback responses and must never force a code-bearing URL without verified Photon-signed subject evidence.
+- `auto`: call `configure.auth.createMessageSignInUrl()` when the SDK/backend supports it; use `mode: "minted"` responses when verification succeeds and plain fallback otherwise.
+- `minted`: private-preview/debug mode that requires the message URL API path. It must still accept `mode: "plain"` fallback responses and must never force a code-bearing URL without verified Photon-signed subject evidence.
 
 The adapter should still support a custom provider for private preview testing:
 
@@ -706,7 +706,7 @@ Adapter tests:
 - dedicated-line iMessage spaces pass the routed E.164 line as return metadata
 - shared-mode iMessage spaces do not pass `shared` as a return phone
 - `sendOnce` suppresses a second plain link
-- message URL provider is called only when policy and subject evidence allow it
+- message URL provider is called when policy requests Configure-owned message URL orchestration
 - `mode: "minted"` result stores `signInExpiresAt`
 - plain fallback result does not store `signInExpiresAt` as a magic-link expiry
 - expired `signInExpiresAt` permits a replacement link

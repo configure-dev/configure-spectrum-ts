@@ -336,7 +336,6 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
   ): Promise<ConfigureSpectrumMessageUrlResult | null> {
     const mode = options.signIn?.linkMode ?? "plain";
     if (mode === "plain") return Promise.resolve(null);
-    if (!derived.subjectToken) return Promise.resolve(null);
 
     const existing = cachedMessageUrl(ctx, reason, connectorIds);
     if (existing) return existing;

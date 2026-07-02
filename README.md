@@ -87,7 +87,7 @@ const configureSpectrum = withConfigure({
 });
 ```
 
-If your Spectrum channel provides signed subject evidence, set `signIn.linkMode` to `"auto"` so the adapter can ask Configure for a message-bound URL when verification is available. If the signature is missing or unsupported, the adapter keeps using the hosted fallback.
+Set `signIn.linkMode` to `"auto"` to route message sign-in through Configure's message URL API. Configure returns the hosted fallback when signed subject evidence is missing or unsupported, and reserves code-bearing links for verified message subjects.
 
 `store` persists adapter state between messages: sender mappings, approved Configure tokens, sign-in delivery state, completion journeys, and webhook idempotency. It does not store Configure user memories or profile data. Most apps back this with the same persistence they already use for sessions, users, or webhook idempotency.
 
@@ -179,7 +179,7 @@ await ctx.replyWithReconnect({
 return;
 ```
 
-Reconnect links use the same hosted surface as sign-in, but they only refresh the requested app connection. In `linkMode: "auto"`, the adapter asks Configure to mint a message URL when signed Spectrum subject evidence is available; otherwise it falls back to the plain hosted reconnect URL.
+Reconnect links use the same hosted surface as sign-in, but they only refresh the requested app connection. In `linkMode: "auto"`, the adapter asks Configure for a message URL and accepts the plain hosted reconnect URL unless verified Spectrum subject evidence allows a code-bearing link.
 
 ## Webhook Composition
 

@@ -237,6 +237,48 @@ describe("withConfigure", () => {
     await expect(ctx.signInUrl()).resolves.toBe("https://sign-in.me/test-agent");
   });
 
+  it("uses the message URL API in auto mode for plain fallback links", async () => {
+    const store = withConfigure.localStore();
+    const fetch = jsonFetch(({ pathname, body }) => {
+      expect(pathname).toBe("/v1/auth/sign-in/message-url");
+      expect(body).toMatchObject({
+        reason: "signin",
+        channel: "iMessage",
+        subject: {
+          key: "subject-1",
+          externalId: "spectrum:subject-1",
+          senderId: "+14155551234",
+        },
+        messageLinePhone: "+14155550123",
+        returnMode: "message",
+      });
+      expect((body as Record<string, unknown>).subjectToken).toBeUndefined();
+      return {
+        mode: "plain",
+        url: "https://sign-in.me/test-agent?delivery=message&message_line_phone=%2B14155550123",
+        reason: "signin",
+        fallbackReason: "subject_signature_missing",
+      };
+    });
+    const configureSpectrum = withConfigure({
+      ...baseOptions,
+      store,
+      fetch,
+      signIn: { linkMode: "auto" },
+      identity: {
+        subjectKey: () => "subject-1",
+        externalId: () => "spectrum:subject-1",
+      },
+    });
+
+    const ctx = await configureSpectrum.resolve(
+      space({ __platform: "iMessage", phone: "+14155550123", type: "dm" }),
+      message({ platform: "iMessage", sender: { id: "+14155551234", address: "+14155551234" } })
+    );
+
+    await expect(ctx.signInUrl()).resolves.toContain("message_line_phone=%2B14155550123");
+  });
+
   it("uses the routed iMessage line for first-message sign-in return metadata", async () => {
     const store = withConfigure.localStore();
     const fetch = jsonFetch(({ pathname, body }) => {
