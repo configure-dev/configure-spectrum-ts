@@ -745,8 +745,12 @@ The model prompt should describe only the agent's behavior and available context
 
 ```ts
 const { profile } = await ctx.profile.read();
-const system = ctx.linked || profileHasData(profile)
-  ? `${STYLE}\n\nWhat Configure already remembers about this user:\n${JSON.stringify(profile, null, 2)}`
+const profileContext = profile.format({ guidelines: false }).trim();
+const contextLabel = ctx.linked
+  ? "Approved Configure profile context for this sender:"
+  : "Developer-scoped Configure context for this sender. This is not federated cross-agent profile access:";
+const system = profileContext
+  ? `${STYLE}\n\n${contextLabel}\n${profileContext}\n\nUse Configure context selectively. Do not expose private facts unless they are needed for the user's request.`
   : `${STYLE}\n\nNo approved Configure profile is available for this sender yet. Do not claim personal context you do not have.`;
 ```
 
