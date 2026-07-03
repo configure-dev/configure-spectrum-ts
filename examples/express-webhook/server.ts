@@ -35,8 +35,15 @@ server.use(
         const state = ctx.linked
           ? "I have your Configure profile for this conversation."
           : "I can continue without a linked profile. Send \"connect\" to link Configure.";
+        const reply = `${greeting} ${state}`;
 
-        await message.reply(`${greeting} ${state}`);
+        await message.reply(reply);
+        ctx.profile.commit({
+          messages: [
+            { role: "user", content: ctx.text },
+            { role: "assistant", content: reply },
+          ],
+        }).catch(() => {});
       });
     },
   })

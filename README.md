@@ -57,22 +57,28 @@ for await (const [space, message] of app.messages) {
     });
     const profileContext = profile.format({ guidelines: false });
 
-    await message.reply(
-      await runAgent({
-        message,
-        profileContext,
-        tools: ctx.profile.tools(),
-        executeTool: ctx.profile.executeTool,
-        linked: ctx.linked,
-      })
-    );
+    const reply = await runAgent({
+      message,
+      profileContext,
+      tools: ctx.profile.tools(),
+      executeTool: ctx.profile.executeTool,
+      linked: ctx.linked,
+    });
+
+    await message.reply(reply);
+    ctx.profile.commit({
+      messages: [
+        { role: "user", content: ctx.text },
+        { role: "assistant", content: reply },
+      ],
+    }).catch(() => {});
   });
 }
 ```
 
 `ctx.profile` is built from a linked Configure token when one is available, or from a developer-scoped external user before sign-in. That lets the rest of your agent use one profile runtime while Configure enforces the appropriate access boundary.
 
-Choose `sections` when the app knows the orientation it needs, then use the formatted context as the normal personalization path. Keep `ctx.profile.tools()` available so the model can call `configure_profile_search` for concrete memories, source-specific questions like "what does ChatGPT remember about me?", or details that need exact source attribution.
+Choose `sections` when the app knows the orientation it needs, then use the formatted context as the normal personalization path. Keep `ctx.profile.tools()` available so the model can call `configure_profile_search` for concrete memories, source-specific questions like "what does ChatGPT remember about me?", or details that need exact source attribution. After a read-backed turn, call `ctx.profile.commit()` with bounded user/assistant turn evidence.
 
 When `connect` sends a hosted link, `handle()` returns before the handler runs. The model does not need to decide when to produce Configure sign-in URLs.
 
