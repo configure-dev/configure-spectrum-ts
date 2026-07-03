@@ -506,9 +506,17 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
         // Spectrum exposes a reliable return-to-message target, the adapter adds
         // that structured return metadata here instead of asking the model or app
         // prompt to know Configure URL parameters.
-        if (!journeyId && Object.keys(overrides).length === 0) {
-          const messageUrl = await messageUrlForContext(ctx, input.derived, "signin", connectorIds(options.signIn?.connectors), returnTarget);
-          return messageUrl?.url ?? plainSignInUrl(options, returnTarget);
+        if (Object.keys(overrides).length === 0) {
+          const messageUrl = await messageUrlForContext(
+            ctx,
+            input.derived,
+            "signin",
+            connectorIds(options.signIn?.connectors),
+            returnTarget,
+            journeyId
+          );
+          if (messageUrl) return messageUrl.url;
+          if (!journeyId) return plainSignInUrl(options, returnTarget);
         }
         const signInRequest = {
           publishableKey: options.publishableKey,
@@ -591,7 +599,8 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
     derived: Awaited<ReturnType<typeof deriveConfiguredIdentity>>,
     reason: ConfigureSpectrumMessageUrlReason,
     connectorIds?: string[],
-    returnTarget?: MessageReturnTarget
+    returnTarget?: MessageReturnTarget,
+    journeyId?: string
   ): Promise<ConfigureSpectrumMessageUrlResult | null> {
     const mode = normalizeLinkMode(options.signIn?.linkMode);
     if (mode === "plain") return Promise.resolve(null);
@@ -606,6 +615,7 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
       connectorIds,
       idempotencyKey: messageUrlIdempotencyKey(ctx, reason, connectorIds),
       returnTarget,
+      journeyId,
     };
     emitContextEvent(ctx, "message_url_requested", {
       actionState: reason === "reconnect" ? "send_reconnect" : "send_signin",
@@ -685,6 +695,7 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
     connectorIds?: string[];
     idempotencyKey: string;
     returnTarget?: MessageReturnTarget;
+    journeyId?: string;
   }): Promise<ConfigureSpectrumMessageUrlResult> {
     if (options.signIn?.mintUrl) {
       return options.signIn.mintUrl(request);
@@ -864,6 +875,8 @@ type MessageUrlPayload = {
   theme?: "light" | "dark";
   messageLinePhone?: string;
   messageBody?: string;
+  messageCompleteUrl?: string;
+  journeyId?: string;
   returnMode?: "message";
   idempotencyKey?: string;
 };
@@ -944,6 +957,7 @@ async function messageUrlPayload(request: {
   connectorIds?: string[];
   idempotencyKey: string;
   returnTarget?: MessageReturnTarget;
+  journeyId?: string;
 }, options: ConfigureSpectrumOptions): Promise<MessageUrlPayload> {
   const signIn = options.signIn;
   const returnTarget = request.returnTarget ?? await messageReturnTarget(request.ctx, options);
@@ -967,6 +981,8 @@ async function messageUrlPayload(request: {
     ...(signIn?.theme ? { theme: signIn.theme } : {}),
     ...(returnTarget.messageLinePhone ? { messageLinePhone: returnTarget.messageLinePhone } : {}),
     ...(returnTarget.messageBody ? { messageBody: returnTarget.messageBody } : {}),
+    ...(request.journeyId && signIn?.messageCompleteUrl ? { messageCompleteUrl: signIn.messageCompleteUrl } : {}),
+    ...(request.journeyId ? { journeyId: request.journeyId } : {}),
     ...(request.idempotencyKey ? { idempotencyKey: request.idempotencyKey } : {}),
     returnMode: "message" as const,
   };

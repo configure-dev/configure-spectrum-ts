@@ -6,6 +6,7 @@
 
 - Adds `signIn.linkMode: "managed"` as the public name for Configure-managed message sign-in and reconnect URL orchestration.
 - Keeps `signIn.linkMode: "auto"` as a backwards-compatible alias for `managed`.
+- Routes hosted completion journeys through Configure's managed message URL API when `linkMode: "managed"` is enabled.
 - Updates README, production notes, examples, and tests to teach `managed`.
 
 ## 0.1.0-preview.1
