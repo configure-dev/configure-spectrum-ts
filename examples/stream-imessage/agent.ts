@@ -15,6 +15,8 @@ const configureSpectrum = withConfigure({
   store: withConfigure.localStore(),
   signIn: {
     displayName: "Your Agent",
+    linkMode: "managed",
+    connectors: ["gmail", "calendar"],
   },
   connect: {
     mode: "intent",
@@ -28,12 +30,17 @@ for await (const [space, message] of app.messages) {
     const { profile } = await ctx.profile.read({
       sections: ["identity", "preferences", "summary"],
     });
-    const name = firstName(profile);
-    const greeting = name ? `Hey ${name}.` : "Hey.";
-    const state = ctx.linked
-      ? "I have your Configure profile for this conversation."
-      : "I can continue without a linked profile. Send \"connect\" to link Configure.";
-    const reply = `${greeting} ${state}`;
+    const tools = ctx.profile.tools({
+      connectors: ["gmail", "calendar"],
+      actions: ["email.send", "calendar.create_event"],
+    });
+    const reply = await runAgentTurn({
+      text: ctx.text,
+      profile,
+      linked: ctx.linked,
+      tools,
+      executeTool: ctx.profile.executeTool,
+    });
 
     await message.reply(reply);
     ctx.profile.commit({
@@ -43,6 +50,24 @@ for await (const [space, message] of app.messages) {
       ],
     }).catch(() => {});
   });
+}
+
+async function runAgentTurn(input: {
+  text: string;
+  profile: { identity?: { name?: string } };
+  linked: boolean;
+  tools: unknown[];
+  executeTool: unknown;
+}): Promise<string> {
+  void input.text;
+  void input.tools;
+  void input.executeTool;
+  const name = firstName(input.profile);
+  const greeting = name ? `Hey ${name}.` : "Hey.";
+  const state = input.linked
+    ? "I have your Configure profile for this conversation."
+    : "I can continue without a linked profile. Send \"connect\" to link Configure.";
+  return `${greeting} ${state}`;
 }
 
 function firstName(profile: { identity?: { name?: string } }): string | null {

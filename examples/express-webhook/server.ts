@@ -13,6 +13,10 @@ const configureSpectrum = withConfigure({
   publishableKey: process.env.CONFIGURE_PUBLISHABLE_KEY!,
   agent: process.env.CONFIGURE_AGENT!,
   store: withConfigure.localStore(),
+  signIn: {
+    linkMode: "managed",
+    connectors: ["gmail", "calendar"],
+  },
   connect: {
     mode: "intent",
     sendOnce: true,
@@ -30,12 +34,17 @@ server.use(
         const { profile } = await ctx.profile.read({
           sections: ["identity", "preferences", "summary"],
         });
-        const name = firstName(profile);
-        const greeting = name ? `Hey ${name}.` : "Hey.";
-        const state = ctx.linked
-          ? "I have your Configure profile for this conversation."
-          : "I can continue without a linked profile. Send \"connect\" to link Configure.";
-        const reply = `${greeting} ${state}`;
+        const tools = ctx.profile.tools({
+          connectors: ["gmail", "calendar"],
+          actions: ["email.send", "calendar.create_event"],
+        });
+        const reply = await runAgentTurn({
+          text: ctx.text,
+          profile,
+          linked: ctx.linked,
+          tools,
+          executeTool: ctx.profile.executeTool,
+        });
 
         await message.reply(reply);
         ctx.profile.commit({
@@ -50,6 +59,24 @@ server.use(
 );
 
 server.listen(3000);
+
+async function runAgentTurn(input: {
+  text: string;
+  profile: { identity?: { name?: string } };
+  linked: boolean;
+  tools: unknown[];
+  executeTool: unknown;
+}): Promise<string> {
+  void input.text;
+  void input.tools;
+  void input.executeTool;
+  const name = firstName(input.profile);
+  const greeting = name ? `Hey ${name}.` : "Hey.";
+  const state = input.linked
+    ? "I have your Configure profile for this conversation."
+    : "I can continue without a linked profile. Send \"connect\" to link Configure.";
+  return `${greeting} ${state}`;
+}
 
 function firstName(profile: { identity?: { name?: string } }): string | null {
   const name = profile.identity?.name?.trim();

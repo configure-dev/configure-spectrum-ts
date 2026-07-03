@@ -42,6 +42,10 @@ const configureSpectrum = withConfigure({
   publishableKey: process.env.CONFIGURE_PUBLISHABLE_KEY!,
   agent: process.env.CONFIGURE_AGENT!,
   store: adapterStore,
+  signIn: {
+    linkMode: "managed",
+    connectors: ["gmail", "calendar"],
+  },
   connect: {
     mode: "intent",
     sendOnce: true,
@@ -56,11 +60,15 @@ for await (const [space, message] of app.messages) {
       sections: ["identity", "preferences", "summary"],
     });
     const profileContext = profile.format({ guidelines: false });
+    const tools = ctx.profile.tools({
+      connectors: ["gmail", "calendar"],
+      actions: ["email.send", "calendar.create_event"],
+    });
 
     const reply = await runAgent({
       message,
       profileContext,
-      tools: ctx.profile.tools(),
+      tools,
       executeTool: ctx.profile.executeTool,
       linked: ctx.linked,
     });
@@ -78,7 +86,7 @@ for await (const [space, message] of app.messages) {
 
 `ctx.profile` is built from a linked Configure token when one is available, or from a developer-scoped external user before sign-in. That lets the rest of your agent use one profile runtime while Configure enforces the appropriate access boundary.
 
-Choose `sections` when the app knows the orientation it needs, then use the formatted context as the normal personalization path. Keep `ctx.profile.tools()` available so the model can call `configure_profile_search` for concrete memories, source-specific questions like "what does ChatGPT remember about me?", or details that need exact source attribution. After a read-backed turn, call `ctx.profile.commit()` with bounded user/assistant turn evidence.
+Use `ctx.profile.tools({ connectors, actions })` as the normal model-loop integration when your hosted Configure surface can request those capabilities. Choose `sections` when the app wants an optional first-turn orientation packet, then render it with `profile.format()`. Keep Configure tools available so the model can call `configure_profile_read` or `configure_profile_search` for overview, concrete memories, source-specific questions like "what does ChatGPT remember about me?", or details that need exact source attribution. After a read-backed turn, call `ctx.profile.commit()` with bounded user/assistant turn evidence.
 
 When `connect` sends a hosted link, `handle()` returns before the handler runs. The model does not need to decide when to produce Configure sign-in URLs.
 
