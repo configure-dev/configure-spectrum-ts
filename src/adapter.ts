@@ -10,6 +10,11 @@ import type {
   ConfigureSpectrumCompleteResult,
   ConfigureSpectrumConnectOptions,
   ConfigureSpectrumContext,
+  ConfigureSpectrumEvent,
+  ConfigureSpectrumEventActionState,
+  ConfigureSpectrumEventIdentityState,
+  ConfigureSpectrumEventOutcome,
+  ConfigureSpectrumEventValue,
   ConfigureSpectrumFactory,
   ConfigureSpectrumHandleResult,
   ConfigureSpectrumIdentityInput,
@@ -25,6 +30,55 @@ import type {
 } from "./types.js";
 
 const DEFAULT_CONNECT_INTENT = /\b(connect|link|sign[\s-]?in|log[\s-]?in|login)\b/i;
+const SENSITIVE_EVENT_KEY_RE = /(^|_)(phone|otp|token|receipt|email|message|query|prompt|preview|text|body|raw|secret|password|authorization|url|return_to|returnto|key)($|_)/i;
+const SAFE_EVENT_KEYS = new Set([
+  "agent",
+  "channel",
+  "connector_count",
+  "fallback_reason",
+  "identity_state",
+  "link_mode",
+  "message_url_mode",
+  "outcome",
+  "reason",
+  "return_line_present",
+  "source",
+  "subject_token_present",
+  "tool_count",
+]);
+
+function normalizeEventKey(key: string): string {
+  return key.replace(/[A-Z]/g, (match) => `_${match.toLowerCase()}`).toLowerCase();
+}
+
+function sanitizeEventValue(value: unknown): ConfigureSpectrumEventValue {
+  if (value === null || value === undefined) return undefined;
+  if (typeof value === "string") return value.slice(0, 200);
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "boolean") return value;
+  if (Array.isArray(value)) {
+    return value
+      .slice(0, 20)
+      .map((item) => (typeof item === "string" ? item.slice(0, 80) : undefined))
+      .filter((item): item is string => Boolean(item));
+  }
+  return undefined;
+}
+
+function sanitizeEventProperties(properties: Record<string, unknown> = {}): Record<string, ConfigureSpectrumEventValue> {
+  const safe: Record<string, ConfigureSpectrumEventValue> = {};
+  for (const [key, value] of Object.entries(properties)) {
+    const normalizedKey = normalizeEventKey(key);
+    const safeAggregate = normalizedKey.startsWith("has_")
+      || normalizedKey.endsWith("_count")
+      || normalizedKey.endsWith("_present")
+      || /(^|_)(duration_ms|elapsed_ms|latency_ms|attempt_count|status_code)$/.test(normalizedKey);
+    if (!SAFE_EVENT_KEYS.has(normalizedKey) && !safeAggregate && SENSITIVE_EVENT_KEY_RE.test(normalizedKey)) continue;
+    const sanitized = sanitizeEventValue(value);
+    if (sanitized !== undefined) safe[key] = sanitized;
+  }
+  return safe;
+}
 
 function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectrum {
   assertRequired(options.apiKey, "apiKey");
@@ -44,6 +98,67 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
   const journeyByContext = new WeakMap<ConfigureSpectrumContext, string>();
   const messageUrlByContext = new WeakMap<ConfigureSpectrumContext, Map<string, Promise<ConfigureSpectrumMessageUrlResult | null>>>();
 
+  function emitAdapterEvent(input: {
+    event: string;
+    channel?: string;
+    identityState?: ConfigureSpectrumEventIdentityState;
+    actionState?: ConfigureSpectrumEventActionState;
+    outcome?: ConfigureSpectrumEventOutcome;
+    reason?: string;
+    properties?: Record<string, unknown>;
+  }): void {
+    if (!options.onEvent) return;
+    const event: ConfigureSpectrumEvent = {
+      event: input.event,
+      surface: "adapter",
+      agent: options.agent,
+      ...(input.channel ? { channel: input.channel } : {}),
+      ...(input.identityState ? { identityState: input.identityState } : {}),
+      ...(input.actionState ? { actionState: input.actionState } : {}),
+      ...(input.outcome ? { outcome: input.outcome } : {}),
+      ...(input.reason ? { reason: input.reason } : {}),
+      properties: sanitizeEventProperties(input.properties),
+    };
+    try {
+      void Promise.resolve(options.onEvent(event)).catch((error) => {
+        options.logger?.warn?.("configure spectrum event hook failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+    } catch (error) {
+      options.logger?.warn?.("configure spectrum event hook failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  function emitContextEvent(
+    ctx: ConfigureSpectrumContext,
+    event: string,
+    input: {
+      actionState?: ConfigureSpectrumEventActionState;
+      outcome?: ConfigureSpectrumEventOutcome;
+      reason?: string;
+      properties?: Record<string, unknown>;
+    } = {}
+  ): void {
+    emitAdapterEvent({
+      event,
+      channel: ctx.platform,
+      identityState: identityStateFromContext(ctx),
+      actionState: input.actionState,
+      outcome: input.outcome,
+      reason: input.reason,
+      properties: {
+        linked: ctx.linked,
+        recognized: ctx.recognized,
+        approved: ctx.approved,
+        source: ctx.identity.source,
+        ...(input.properties || {}),
+      },
+    });
+  }
+
   async function resolve(space: Space, message: Message): Promise<ConfigureSpectrumContext> {
     const identityInput: ConfigureSpectrumIdentityInput = { space, message };
     const derived = await deriveConfiguredIdentity(identityInput, options);
@@ -52,9 +167,9 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
     const storedToken = saved?.configureToken;
 
     if (storedToken) {
-      const validStored = await resolveStoredToken(storedToken, saved, validationPolicy);
+      const validStored = await resolveStoredToken(storedToken, saved, validationPolicy, message.platform);
       if (validStored) {
-        return createContext({
+        const ctx = createContext({
           space,
           message,
           derived,
@@ -69,6 +184,8 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
             source: "token",
           },
         });
+        emitContextEvent(ctx, "identity_resolved", { outcome: "ok", reason: "stored_token" });
+        return ctx;
       }
       await options.store.saveSubject(derived.subjectKey, {
         externalId: derived.externalId,
@@ -79,6 +196,14 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
 
     if (derived.phoneCandidates.length > 0) {
       try {
+        emitAdapterEvent({
+          event: "phone_recognition_attempted",
+          channel: message.platform,
+          identityState: "unknown",
+          actionState: "continue",
+          outcome: "ok",
+          properties: { phone_candidate_count: derived.phoneCandidates.length },
+        });
         const recognition = await configure.auth.recognizePhone(derived.phoneCandidates);
         const recognizedToken = recognition.token || recognition.agentToken;
         if (recognition.approved && recognizedToken) {
@@ -87,7 +212,7 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
             configureToken: recognizedToken,
             configureUserId: recognition.userId,
           });
-          return createContext({
+          const ctx = createContext({
             space,
             message,
             derived,
@@ -104,10 +229,16 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
               source: "phone_recognition",
             },
           });
+          emitContextEvent(ctx, "identity_resolved", {
+            outcome: "ok",
+            reason: "phone_recognition",
+            properties: { phone_candidate_count: derived.phoneCandidates.length },
+          });
+          return ctx;
         }
         if (recognition.recognized) {
           await options.store.saveSubject(derived.subjectKey, { externalId: derived.externalId });
-          return createContext({
+          const ctx = createContext({
             space,
             message,
             derived,
@@ -122,8 +253,23 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
               source: "external_id",
             },
           });
+          emitContextEvent(ctx, "identity_resolved", {
+            outcome: "blocked",
+            reason: "phone_recognition_unapproved",
+            properties: { phone_candidate_count: derived.phoneCandidates.length },
+          });
+          return ctx;
         }
       } catch (error) {
+        emitAdapterEvent({
+          event: "phone_recognition_failed",
+          channel: message.platform,
+          identityState: "unknown",
+          actionState: "continue",
+          outcome: "fallback",
+          reason: "recognition_error",
+          properties: { error_kind: error instanceof Error ? error.name : "unknown" },
+        });
         options.logger?.warn?.("configure phone recognition failed; falling back to externalId", {
           error: error instanceof Error ? error.message : String(error),
         });
@@ -131,7 +277,7 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
     }
 
     await options.store.saveSubject(derived.subjectKey, { externalId: derived.externalId });
-    return createContext({
+    const ctx = createContext({
       space,
       message,
       derived,
@@ -144,6 +290,8 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
         source: "external_id",
       },
     });
+    emitContextEvent(ctx, "identity_resolved", { outcome: "ok", reason: "external_id" });
+    return ctx;
   }
 
   async function handle(
@@ -153,11 +301,33 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
   ): Promise<ConfigureSpectrumHandleResult> {
     if (options.store.claimMessage) {
       const claimed = await options.store.claimMessage(messageKey(space, message));
-      if (!claimed) return { status: "duplicate" };
+      if (!claimed) {
+        emitAdapterEvent({
+          event: "message_duplicate_ignored",
+          channel: message.platform,
+          identityState: "unknown",
+          actionState: "continue",
+          outcome: "duplicate",
+          reason: "adapter_idempotency",
+        });
+        return { status: "duplicate" };
+      }
     }
 
+    emitAdapterEvent({
+      event: "identity_resolution_started",
+      channel: message.platform,
+      identityState: "unknown",
+      actionState: "continue",
+      outcome: "ok",
+    });
     const ctx = await resolve(space, message);
     if (!ctx.linked && (await shouldConnect(ctx, options.connect))) {
+      emitContextEvent(ctx, "signin_required", {
+        actionState: "send_signin",
+        outcome: "ok",
+        reason: "connect_policy",
+      });
       await ctx.replyWithSignIn();
       if ((options.connect?.behavior ?? "send-and-stop") === "send-and-stop") {
         return { status: "connect-link-sent" };
@@ -193,19 +363,76 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
   async function resolveStoredToken(
     token: string,
     saved: ConfigureSpectrumSubject | null,
-    policy: ConfigureSpectrumTokenValidation
+    policy: ConfigureSpectrumTokenValidation,
+    channel?: string
   ): Promise<boolean> {
-    if (policy === "never") return true;
-    if (policy === "on-first-use" && validatedTokens.has(token)) return true;
+    if (policy === "never") {
+      emitAdapterEvent({
+        event: "stored_token_validated",
+        channel,
+        identityState: "linked",
+        actionState: "continue",
+        outcome: "ok",
+        reason: "validation_disabled",
+      });
+      return true;
+    }
+    if (policy === "on-first-use" && validatedTokens.has(token)) {
+      emitAdapterEvent({
+        event: "stored_token_validated",
+        channel,
+        identityState: "linked",
+        actionState: "continue",
+        outcome: "ok",
+        reason: "cached_validation",
+      });
+      return true;
+    }
     try {
       const validation = await configure.auth.validateSignInToken(token);
-      if (!isValidAgentToken(validation, options.agent)) return false;
+      if (!isValidAgentToken(validation, options.agent)) {
+        emitAdapterEvent({
+          event: "stored_token_validated",
+          channel,
+          identityState: "token_invalid",
+          actionState: "continue",
+          outcome: "blocked",
+          reason: "invalid_or_unapproved",
+          properties: {
+            approved: validation.approved === true,
+            token_agent_matches: !validation.agent || validation.agent === options.agent,
+          },
+        });
+        return false;
+      }
       validatedTokens.add(token);
       if (validation.userId && saved && validation.userId !== saved.configureUserId) {
         await options.store.saveSubject(saved.key, { configureUserId: validation.userId });
       }
+      emitAdapterEvent({
+        event: "stored_token_validated",
+        channel,
+        identityState: "linked",
+        actionState: "continue",
+        outcome: "ok",
+        reason: "api_validation",
+        properties: {
+          approved: validation.approved !== false,
+        },
+      });
       return true;
     } catch (error) {
+      emitAdapterEvent({
+        event: "stored_token_validated",
+        channel,
+        identityState: "token_invalid",
+        actionState: "continue",
+        outcome: "fallback",
+        reason: "validation_error",
+        properties: {
+          error_kind: error instanceof Error ? error.name : "unknown",
+        },
+      });
       options.logger?.warn?.("configure token validation failed; falling back to externalId", {
         error: error instanceof Error ? error.message : String(error),
       });
@@ -317,12 +544,34 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
             signInIdempotencyKey: null,
           }),
         });
+        emitContextEvent(ctx, "signin_link_sent", {
+          actionState: "send_signin",
+          outcome: "ok",
+          reason: "reply_with_signin",
+          properties: {
+            link_mode: options.signIn?.linkMode ?? "plain",
+            message_url_mode: messageUrl?.mode ?? "plain",
+            fallback_reason: messageUrl?.mode === "plain" ? messageUrl.fallbackReason : undefined,
+          },
+        });
       },
       replyWithReconnect: async (replyOptions = {}) => {
         const reconnectConnectors = connectorIds(replyOptions.connectors ?? options.signIn?.connectors);
         const url = await ctx.reconnectUrl({ connectors: reconnectConnectors });
         const body = await signInMessage(ctx, url, replyOptions.message ?? "Reconnect your Configure apps: {url}");
         await input.message.reply(body);
+        const messageUrl = await cachedMessageUrl(ctx, "reconnect", reconnectConnectors)?.catch(() => null);
+        emitContextEvent(ctx, "reconnect_link_sent", {
+          actionState: "send_reconnect",
+          outcome: "ok",
+          reason: "reply_with_reconnect",
+          properties: {
+            connector_count: reconnectConnectors?.length ?? 0,
+            link_mode: options.signIn?.linkMode ?? "plain",
+            message_url_mode: messageUrl?.mode ?? "plain",
+            fallback_reason: messageUrl?.mode === "plain" ? messageUrl.fallbackReason : undefined,
+          },
+        });
       },
     };
     return ctx;
@@ -349,7 +598,45 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
       idempotencyKey: messageUrlIdempotencyKey(ctx, reason, connectorIds),
       returnTarget,
     };
-    const pending = createMessageUrl(request).catch((error) => {
+    emitContextEvent(ctx, "message_url_requested", {
+      actionState: reason === "reconnect" ? "send_reconnect" : "send_signin",
+      outcome: "ok",
+      reason,
+      properties: {
+        link_mode: mode,
+        connector_count: connectorIds?.length ?? 0,
+        subject_token_present: Boolean(derived.subjectToken),
+        return_line_present: Boolean(returnTarget?.messageLinePhone),
+      },
+    });
+    const pending = createMessageUrl(request).then((result) => {
+      emitContextEvent(ctx, "message_url_created", {
+        actionState: reason === "reconnect" ? "send_reconnect" : "send_signin",
+        outcome: result.mode === "minted" ? "ok" : "fallback",
+        reason,
+        properties: {
+          link_mode: mode,
+          message_url_mode: result.mode,
+          fallback_reason: result.mode === "plain" ? result.fallbackReason : undefined,
+          connector_count: connectorIds?.length ?? 0,
+          subject_token_present: Boolean(derived.subjectToken),
+          return_line_present: Boolean(returnTarget?.messageLinePhone),
+        },
+      });
+      return result;
+    }).catch((error) => {
+      emitContextEvent(ctx, "message_url_failed", {
+        actionState: reason === "reconnect" ? "send_reconnect" : "send_signin",
+        outcome: "fallback",
+        reason,
+        properties: {
+          link_mode: mode,
+          connector_count: connectorIds?.length ?? 0,
+          subject_token_present: Boolean(derived.subjectToken),
+          return_line_present: Boolean(returnTarget?.messageLinePhone),
+          error_kind: error instanceof Error ? error.name : "unknown",
+        },
+      });
       options.logger?.warn?.("configure message URL creation failed; falling back to plain sign-in link", {
         error: error instanceof Error ? error.message : String(error),
       });
@@ -412,10 +699,38 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
     const key = messageLineRegistrationKey(channel, phone);
     if (registeredMessageLines.has(key)) return true;
     try {
+      emitAdapterEvent({
+        event: "message_line_registration_attempted",
+        channel,
+        identityState: "unknown",
+        actionState: "continue",
+        outcome: "ok",
+        properties: { return_line_present: true },
+      });
       await registerMessageLine(channel, phone);
       registeredMessageLines.add(key);
+      emitAdapterEvent({
+        event: "message_line_registration_completed",
+        channel,
+        identityState: "unknown",
+        actionState: "continue",
+        outcome: "ok",
+        properties: { return_line_present: true },
+      });
       return true;
     } catch (error) {
+      emitAdapterEvent({
+        event: "message_line_registration_completed",
+        channel,
+        identityState: "unknown",
+        actionState: "continue",
+        outcome: "fallback",
+        reason: "registration_error",
+        properties: {
+          return_line_present: true,
+          error_kind: error instanceof Error ? error.name : "unknown",
+        },
+      });
       options.logger?.warn?.("configure message line registration failed; omitting hosted return phone", {
         error: error instanceof Error ? error.message : String(error),
       });
@@ -498,6 +813,13 @@ function isValidAgentToken(validation: SignInTokenValidationResult, agent: strin
   if (validation.tokenUse && validation.tokenUse !== "agent") return false;
   if (validation.agent && validation.agent !== agent) return false;
   return true;
+}
+
+function identityStateFromContext(ctx: ConfigureSpectrumContext): ConfigureSpectrumEventIdentityState {
+  if (ctx.linked && ctx.approved) return "linked";
+  if (ctx.linked) return "linked";
+  if (ctx.recognized) return "recognized";
+  return "external";
 }
 
 function assertRequired(value: string | undefined, name: string): void {

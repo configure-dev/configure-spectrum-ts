@@ -32,6 +32,31 @@ export interface ConfigureSpectrumLogger {
   error?(message: string, fields?: Record<string, unknown>): void;
 }
 
+export type ConfigureSpectrumEventSurface = "adapter";
+export type ConfigureSpectrumEventOutcome = "ok" | "blocked" | "failed" | "fallback" | "duplicate";
+export type ConfigureSpectrumEventIdentityState = "unknown" | "external" | "recognized" | "linked" | "token_invalid";
+export type ConfigureSpectrumEventActionState =
+  | "continue"
+  | "send_signin"
+  | "send_reconnect"
+  | "permissions_required"
+  | "fail_closed";
+export type ConfigureSpectrumEventValue = string | number | boolean | string[] | null | undefined;
+
+export interface ConfigureSpectrumEvent {
+  event: string;
+  surface: ConfigureSpectrumEventSurface;
+  agent: string;
+  channel?: string;
+  identityState?: ConfigureSpectrumEventIdentityState;
+  actionState?: ConfigureSpectrumEventActionState;
+  outcome?: ConfigureSpectrumEventOutcome;
+  reason?: string;
+  properties?: Record<string, ConfigureSpectrumEventValue>;
+}
+
+export type ConfigureSpectrumEventHandler = (event: ConfigureSpectrumEvent) => void | Promise<void>;
+
 export interface ConfigureSpectrumSignInOptions {
   displayName?: string;
   agentLogo?: string;
@@ -86,6 +111,7 @@ export interface ConfigureSpectrumOptions {
   connect?: ConfigureSpectrumConnectOptions;
   identity?: ConfigureSpectrumIdentityOptions;
   logger?: ConfigureSpectrumLogger;
+  onEvent?: ConfigureSpectrumEventHandler;
 }
 
 export interface ConfigureSpectrumSubject {
