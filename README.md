@@ -22,7 +22,7 @@ Existing Spectrum apps can add the adapter:
 npm install configure-spectrum
 ```
 
-New apps should install Spectrum according to [Photon's docs](https://photon.codes/docs/) before adding this package. If your package manager does not auto-install peer dependencies, install `spectrum-ts` explicitly. This package depends on `configure@^1.1.14` for the hosted message URL, hosted completion, and message-line registry helpers.
+New apps should install Spectrum according to [Photon's docs](https://photon.codes/docs/) before adding this package. If your package manager does not auto-install peer dependencies, install `spectrum-ts` explicitly. This package depends on `configure@^1.1.14` for the hosted message URL, hosted completion, message-line registry helpers, and profile runtime.
 
 Local package testing can use a packed tarball:
 
@@ -52,12 +52,17 @@ const configureSpectrum = withConfigure({
 
 for await (const [space, message] of app.messages) {
   await configureSpectrum.handle(space, message, async (ctx) => {
-    const { profile } = await ctx.profile.read();
+    const { profile } = await ctx.profile.read({
+      sections: ["identity", "preferences", "summary"],
+    });
+    const profileOverview = profile.format({ guidelines: false, maxChars: 6_000 });
 
     await message.reply(
       await runAgent({
         message,
-        profile,
+        profileOverview,
+        tools: ctx.profile.tools(),
+        executeTool: ctx.profile.executeTool,
         linked: ctx.linked,
       })
     );
@@ -66,6 +71,8 @@ for await (const [space, message] of app.messages) {
 ```
 
 `ctx.profile` is built from a linked Configure token when one is available, or from a developer-scoped external user before sign-in. That lets the rest of your agent use one profile runtime while Configure enforces the appropriate access boundary.
+
+Use the formatted overview as orientation, not as the full record. Keep `ctx.profile.tools()` available so the model can call `configure_profile_search` for concrete memories, source-specific questions like "what does ChatGPT remember about me?", or details that need completeness/source attribution.
 
 When `connect` sends a hosted link, `handle()` returns before the handler runs. The model does not need to decide when to produce Configure sign-in URLs.
 
