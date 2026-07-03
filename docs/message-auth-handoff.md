@@ -111,7 +111,9 @@ const configureSpectrum = withConfigure({
 
 for await (const [space, message] of app.messages) {
   await configureSpectrum.handle(space, message, async (ctx) => {
-    const { profile } = await ctx.profile.read();
+    const { profile } = await ctx.profile.read({
+      sections: ["identity", "preferences", "summary"],
+    });
     await runAgent({ space, message, profile, linked: ctx.linked });
   });
 }
@@ -745,7 +747,9 @@ The quickstart should continue to:
 The model prompt should describe only the agent's behavior and available context:
 
 ```ts
-const { profile } = await ctx.profile.read();
+const { profile } = await ctx.profile.read({
+  sections: ["identity", "preferences", "summary"],
+});
 const profileContext = profile.format({ guidelines: false }).trim();
 const system = profileContext
   ? `${STYLE}\n\n${profileContext}\n\nUse Configure context selectively. For concrete memories or source-specific questions, call Configure search tools. Do not expose private facts unless they are needed for the user's request.`
