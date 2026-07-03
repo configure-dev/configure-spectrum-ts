@@ -736,8 +736,8 @@ The quickstart should continue to:
 
 - use adapter-owned `connect` behavior
 - avoid putting `ctx.signInUrl()` in model/system prompt text
-- include only non-empty bounded `profile.format({ maxChars })` output from a small `identity`/`preferences`/`summary` overview as pre-read context
-- use `configure_profile_search` for concrete memories, imported-source questions, and details that need completeness/source attribution
+- include only non-empty `profile.format()` output as pre-read context
+- use `configure_profile_search` for concrete memories, imported-source questions, and details that need exact source attribution
 - document that the current plain link flow depends on phone-backed sender evidence
 - consume the adapter package instead of hand-rolling message-line registration or URL minting
 - switch to SDK-backed message-line registration once the canonical SDK method exists, while keeping code-bearing links gated on verified Photon signatures
@@ -745,12 +745,10 @@ The quickstart should continue to:
 The model prompt should describe only the agent's behavior and available context:
 
 ```ts
-const { profile } = await ctx.profile.read({
-  sections: ["identity", "preferences", "summary"],
-});
-const profileContext = profile.format({ guidelines: false, maxChars: 6_000 }).trim();
+const { profile } = await ctx.profile.read();
+const profileContext = profile.format({ guidelines: false }).trim();
 const system = profileContext
-  ? `${STYLE}\n\n${profileContext}\n\nUse this Configure overview selectively. For concrete memories or source-specific questions, call Configure search tools instead of assuming the overview is complete. Do not expose private facts unless they are needed for the user's request.`
+  ? `${STYLE}\n\n${profileContext}\n\nUse Configure context selectively. For concrete memories or source-specific questions, call Configure search tools. Do not expose private facts unless they are needed for the user's request.`
   : `${STYLE}\n\nNo approved Configure profile is available for this sender yet. Do not claim personal context you do not have.`;
 ```
 
