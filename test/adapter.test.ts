@@ -330,6 +330,65 @@ describe("withConfigure", () => {
     await expect(ctx.signInUrl()).resolves.toContain("message_line_phone=%2B14155550123");
   });
 
+  it("routes hosted completion journeys through the message URL API in managed mode", async () => {
+    const store = countingStore(withConfigure.localStore());
+    const fetch = jsonFetch(({ pathname, body }) => {
+      if (pathname === "/v1/auth/sign-in/message-lines") {
+        expect(body).toMatchObject({
+          channel: "iMessage",
+          phone: "+14155550123",
+          metadata: { source: "configure-spectrum" },
+        });
+        return { line: { id: "line-imessage-0123", channel: "imessage", phoneLast4: "0123", status: "active" } };
+      }
+      expect(pathname).toBe("/v1/auth/sign-in/message-url");
+      expect(body).toMatchObject({
+        reason: "signin",
+        channel: "iMessage",
+        subject: {
+          key: "subject-1",
+          externalId: "spectrum:subject-1",
+          senderId: "+14155551234",
+        },
+        messageLinePhone: "+14155550123",
+        messageBody: "done!",
+        messageCompleteUrl: "https://agent.example.com/auth/configure/complete",
+        returnMode: "message",
+      });
+      expect(typeof (body as Record<string, unknown>).journeyId).toBe("string");
+      return {
+        mode: "plain",
+        url: "https://sign-in.me/test-agent?delivery=message&message_line_phone=%2B14155550123&journey=from-api",
+        reason: "signin",
+        fallbackReason: "subject_signature_missing",
+      };
+    });
+    const configureSpectrum = withConfigure({
+      ...baseOptions,
+      store,
+      fetch,
+      signIn: {
+        linkMode: "managed",
+        messageCompleteUrl: "https://agent.example.com/auth/configure/complete",
+        messageBody: "done!",
+      },
+      identity: {
+        subjectKey: () => "subject-1",
+        externalId: () => "spectrum:subject-1",
+      },
+    });
+    const ctx = await configureSpectrum.resolve(
+      space({ __platform: "iMessage", phone: "+14155550123", type: "dm" }),
+      message({ platform: "iMessage", sender: { id: "+14155551234", address: "+14155551234" } })
+    );
+    const first = await ctx.signInUrl();
+    const second = await ctx.signInUrl();
+
+    expect(first).toContain("journey=from-api");
+    expect(second).toBe(first);
+    expect(store.savedJourneys).toBe(1);
+  });
+
   it("uses the routed iMessage line for first-message sign-in return metadata", async () => {
     const store = withConfigure.localStore();
     const fetch = jsonFetch(({ pathname, body }) => {

@@ -34,7 +34,7 @@ As of this implementation baseline, the repos expose:
 
 - `ctx.signInUrl()` in `configure-spectrum`
 - hosted plain links for the no-completion message flow, with inferred message return metadata when Spectrum provides a reliable target
-- verbose SDK URLs when `messageCompleteUrl` or explicit URL overrides are present
+- verbose SDK URLs for plain-mode completion flows or explicit URL overrides
 - `configure.auth.signInUrl()`
 - `configure.auth.createMessageSignInUrl()`
 - `POST /v1/auth/sign-in/code`
@@ -622,7 +622,7 @@ const configureSpectrum = withConfigure({
 Recommended behavior:
 
 - `plain`: current `https://sign-in.me/{agent}` hosted behavior, optionally with validated message return metadata.
-- `managed`: resolve any reliable return line, register it through `configure.auth.registerMessageLine()`, then call `configure.auth.createMessageSignInUrl()`; use `mode: "minted"` responses when verification succeeds and plain fallback otherwise. `auto` remains a compatibility alias until a breaking adapter release.
+- `managed`: resolve any reliable return line, register it through `configure.auth.registerMessageLine()`, then call `configure.auth.createMessageSignInUrl()` with any completion journey metadata; use `mode: "minted"` responses when verification succeeds and plain fallback otherwise. `auto` remains a compatibility alias until a breaking adapter release.
 - `minted`: private-preview/debug mode that requires the message URL API path. It must still accept `mode: "plain"` fallback responses and must never force a code-bearing URL without verified Photon-signed subject evidence.
 
 The adapter should call `configure.auth.registerMessageLine()` for return-line registration and `configure.auth.createMessageSignInUrl()` for message URL creation. The minimum supported `configure` version includes both helpers, so adapter code should not carry a direct HTTP bridge.
