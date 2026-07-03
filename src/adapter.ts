@@ -397,10 +397,7 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
     const auth = configure.auth as unknown as ConfigureMessageAuth;
     const payload = await messageUrlPayload(request, options);
     const registeredPayload = await payloadWithRegisteredMessageLine(payload);
-    if (typeof auth.createMessageSignInUrl === "function") {
-      return auth.createMessageSignInUrl(registeredPayload);
-    }
-    return postMessageUrl(registeredPayload);
+    return auth.createMessageSignInUrl(registeredPayload);
   }
 
   async function payloadWithRegisteredMessageLine(payload: MessageUrlPayload): Promise<MessageUrlPayload> {
@@ -429,58 +426,7 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
   async function registerMessageLine(channel: string, phone: string): Promise<void> {
     const registration = messageLineRegistrationPayload(channel, phone, options);
     const auth = configure.auth as unknown as ConfigureMessageAuth;
-    if (typeof auth.registerMessageLine === "function") {
-      await auth.registerMessageLine(registration);
-      return;
-    }
-
-    // Compatibility for configure versions before auth.registerMessageLine().
-    await postMessageLineRegistration(registration);
-  }
-
-  async function postMessageLineRegistration(registration: MessageLineRegistrationPayload): Promise<void> {
-    const fetchFn = options.fetch ?? globalThis.fetch;
-    if (typeof fetchFn !== "function") {
-      throw new Error("fetch is not available");
-    }
-    const response = await fetchFn(`${apiBaseUrl(options)}/v1/auth/sign-in/message-lines`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-API-Key": options.apiKey,
-        "X-Agent": options.agent,
-      },
-      body: JSON.stringify(registration),
-    });
-    if (!response.ok) {
-      throw new Error(`message line registration failed with status ${response.status}`);
-    }
-  }
-
-  async function postMessageUrl(payload: MessageUrlPayload): Promise<ConfigureSpectrumMessageUrlResult> {
-    const fetchFn = options.fetch ?? globalThis.fetch;
-    if (typeof fetchFn !== "function") {
-      const returnTarget = messageReturnTargetFromPayload(payload);
-      return {
-        mode: "plain",
-        url: payload.reason === "reconnect"
-          ? plainReconnectUrl(options, payload.connectors, returnTarget)
-          : plainSignInUrl(options, returnTarget),
-      };
-    }
-    const response = await fetchFn(`${apiBaseUrl(options)}/v1/auth/sign-in/message-url`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-API-Key": options.apiKey,
-        "X-Agent": options.agent,
-      },
-      body: JSON.stringify(payload),
-    });
-    if (!response.ok) {
-      throw new Error(`message URL request failed with status ${response.status}`);
-    }
-    return normalizeMessageUrlResult(await response.json());
+    await auth.registerMessageLine(registration);
   }
 
   return { resolve, handle, complete };
@@ -599,13 +545,9 @@ type MessageLineRegistrationPayload = {
 };
 
 type ConfigureMessageAuth = {
-  createMessageSignInUrl?: (input: MessageUrlPayload) => Promise<ConfigureSpectrumMessageUrlResult>;
-  registerMessageLine?: (input: MessageLineRegistrationPayload) => Promise<unknown>;
+  createMessageSignInUrl: (input: MessageUrlPayload) => Promise<ConfigureSpectrumMessageUrlResult>;
+  registerMessageLine: (input: MessageLineRegistrationPayload) => Promise<unknown>;
 };
-
-function apiBaseUrl(options: ConfigureSpectrumOptions): string {
-  return (options.baseUrl ?? "https://api.configure.dev").replace(/\/+$/, "");
-}
 
 function plainSignInUrl(options: ConfigureSpectrumOptions, returnTarget: MessageReturnTarget = {}): string {
   const origin = (options.signIn?.signInOrigin ?? "https://sign-in.me").replace(/\/+$/, "");

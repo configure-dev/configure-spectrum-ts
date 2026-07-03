@@ -50,7 +50,7 @@ The message URL endpoint currently implements the conservative preview behavior:
 
 The backend now also has an agent-owned message-line registry. Message URL requests that include a return phone must match an active registry row for the API-key-resolved developer, agent, channel, and phone hash. The registry stores hashes and last4 only; raw return phones are supplied by the server-side agent at request time and must not be stored.
 
-The adapter calls `configure.auth.registerMessageLine()` when the installed Configure SDK exposes it, and keeps a narrow direct-HTTP path only as a mixed-version bridge. The next canonical-package pass should remove that bridge after the minimum supported `configure` version includes the helper.
+The adapter calls `configure.auth.registerMessageLine()` and `configure.auth.createMessageSignInUrl()` through the Configure SDK. Direct HTTP calls to the Configure auth control plane are not part of the adapter contract.
 
 ## Goals
 
@@ -625,7 +625,7 @@ Recommended behavior:
 - `auto`: resolve any reliable return line, register it through `configure.auth.registerMessageLine()`, then call `configure.auth.createMessageSignInUrl()`; use `mode: "minted"` responses when verification succeeds and plain fallback otherwise.
 - `minted`: private-preview/debug mode that requires the message URL API path. It must still accept `mode: "plain"` fallback responses and must never force a code-bearing URL without verified Photon-signed subject evidence.
 
-The adapter should call `configure.auth.registerMessageLine()` for return-line registration. During the mixed-version window before every downstream package depends on a published SDK with this helper, any direct HTTP fallback must stay narrow, internal, and easy to delete with the minimum `configure` version bump.
+The adapter should call `configure.auth.registerMessageLine()` for return-line registration and `configure.auth.createMessageSignInUrl()` for message URL creation. The minimum supported `configure` version includes both helpers, so adapter code should not carry a direct HTTP bridge.
 
 When registration fails, the adapter should drop `messageLinePhone` and `messageBody` from the message URL request and continue with the hosted fallback. A registration failure should not block the user from receiving a normal sign-in link.
 
@@ -817,13 +817,13 @@ Spectrum adapter:
 - Ensure `ctx.signInUrl()` never emits a code-bearing magic link without verified Photon-signed subject evidence. **Baseline complete.**
 - Add `signInExpiresAt` and `signInIdempotencyKey` store fields. **Baseline complete.**
 - Make `sendOnce` expiry-aware. **Baseline complete.**
-- Register valid return lines before message URL creation. **Bridge complete through direct HTTP; refactor to SDK after canonical methods ship.**
+- Register valid return lines before message URL creation. **SDK-backed complete.**
 
 Quickstart:
 
 - Use `linkMode: "auto"` to exercise the message URL path with plain fallback. **Baseline complete.**
-- Refresh vendored tarball after adapter changes. **Baseline complete for the current bridge.**
-- Refresh again after Spectrum moves from direct HTTP to SDK-backed message-line registration. **Next.**
+- Refresh vendored tarball after adapter changes. **Baseline complete.**
+- Refresh quickstart after Spectrum moves to the published npm package. **Next.**
 
 ### Phase 3: Signed Subject Extraction And Recognition
 

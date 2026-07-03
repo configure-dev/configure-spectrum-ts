@@ -22,16 +22,14 @@ Existing Spectrum apps can add the adapter:
 npm install configure-spectrum
 ```
 
-New apps should install Spectrum according to [Photon's docs](https://photon.codes/docs/) before adding this package. If your package manager does not auto-install peer dependencies, install `spectrum-ts` explicitly.
+New apps should install Spectrum according to [Photon's docs](https://photon.codes/docs/) before adding this package. If your package manager does not auto-install peer dependencies, install `spectrum-ts` explicitly. This package depends on `configure@^1.1.13` for the hosted message URL and message-line registry helpers.
 
-Private preview installs can use a packed tarball until the package is published:
+Local package testing can use a packed tarball:
 
 ```bash
 npm pack
-npm install ./configure-spectrum-0.1.0-preview.0.tgz
+npm install ./configure-spectrum-0.1.0-preview.1.tgz
 ```
-
-For deployable preview apps, commit the tarball in the consuming repo and reference it with a relative `file:` dependency. Replace that dependency with `configure-spectrum` after npm publish.
 
 ## Existing Handler
 
