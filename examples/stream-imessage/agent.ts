@@ -25,7 +25,9 @@ const configureSpectrum = withConfigure({
 for await (const [space, message] of app.messages) {
   await configureSpectrum.handle(space, message, async (ctx) => {
     if (!ctx.text) return;
-    const { profile } = await ctx.profile.read();
+    const { profile } = await ctx.profile.read({
+      sections: ["identity", "preferences", "summary"],
+    });
     const name = firstName(profile);
     const greeting = name ? `Hey ${name}.` : "Hey.";
     const state = ctx.linked

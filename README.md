@@ -52,7 +52,9 @@ const configureSpectrum = withConfigure({
 
 for await (const [space, message] of app.messages) {
   await configureSpectrum.handle(space, message, async (ctx) => {
-    const { profile } = await ctx.profile.read();
+    const { profile } = await ctx.profile.read({
+      sections: ["identity", "preferences", "summary"],
+    });
     const profileContext = profile.format({ guidelines: false });
 
     await message.reply(
@@ -70,7 +72,7 @@ for await (const [space, message] of app.messages) {
 
 `ctx.profile` is built from a linked Configure token when one is available, or from a developer-scoped external user before sign-in. That lets the rest of your agent use one profile runtime while Configure enforces the appropriate access boundary.
 
-Use the formatted context as the normal personalization path. Keep `ctx.profile.tools()` available so the model can call `configure_profile_search` for concrete memories, source-specific questions like "what does ChatGPT remember about me?", or details that need exact source attribution.
+Choose `sections` when the app knows the orientation it needs, then use the formatted context as the normal personalization path. Keep `ctx.profile.tools()` available so the model can call `configure_profile_search` for concrete memories, source-specific questions like "what does ChatGPT remember about me?", or details that need exact source attribution.
 
 When `connect` sends a hosted link, `handle()` returns before the handler runs. The model does not need to decide when to produce Configure sign-in URLs.
 
