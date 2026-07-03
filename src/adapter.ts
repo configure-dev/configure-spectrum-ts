@@ -40,11 +40,11 @@ const SAFE_EVENT_KEYS = new Set([
   "identity_state",
   "link_mode",
   "message_url_mode",
+  "message_sender_proof_present",
   "outcome",
   "reason",
   "return_line_present",
   "source",
-  "subject_token_present",
   "tool_count",
 ]);
 type ActiveConfigureSpectrumLinkMode = Exclude<ConfigureSpectrumLinkMode, "auto">;
@@ -512,7 +512,7 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
             journeyId
           );
           if (messageUrl) return messageUrl.url;
-          if (!journeyId) return plainSignInUrl(options, returnTarget);
+          if (!journeyId) return plainSignInUrl(options, localPlainReturnTarget(returnTarget));
         }
         const signInRequest = {
           publishableKey: options.publishableKey,
@@ -537,7 +537,7 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
         const reconnectConnectors = connectorIds(reconnectOptions.connectors ?? options.signIn?.connectors);
         const returnTarget = await messageReturnTarget(ctx, options);
         const messageUrl = await messageUrlForContext(ctx, input.derived, "reconnect", reconnectConnectors, returnTarget);
-        return messageUrl?.url ?? plainReconnectUrl(options, reconnectConnectors, returnTarget);
+        return messageUrl?.url ?? plainReconnectUrl(options, reconnectConnectors, localPlainReturnTarget(returnTarget));
       },
       replyWithSignIn: async (replyOptions = {}) => {
         const url = await ctx.signInUrl();
@@ -590,6 +590,10 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
     return ctx;
   }
 
+  function localPlainReturnTarget(returnTarget: MessageReturnTarget): MessageReturnTarget {
+    return normalizeLinkMode(options.signIn?.linkMode) === "plain" ? returnTarget : {};
+  }
+
   function messageUrlForContext(
     ctx: ConfigureSpectrumContext,
     derived: Awaited<ReturnType<typeof deriveConfiguredIdentity>>,
@@ -607,7 +611,7 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
     const request = {
       reason,
       ctx,
-      subjectToken: derived.subjectToken,
+      messageSenderProof: derived.messageSenderProof,
       connectorIds,
       idempotencyKey: messageUrlIdempotencyKey(ctx, reason, connectorIds),
       returnTarget,
@@ -620,7 +624,7 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
       properties: {
         link_mode: mode,
         connector_count: connectorIds?.length ?? 0,
-        subject_token_present: Boolean(derived.subjectToken),
+        message_sender_proof_present: Boolean(derived.messageSenderProof),
         return_line_present: Boolean(returnTarget?.messageLinePhone),
       },
     });
@@ -634,7 +638,7 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
           message_url_mode: result.mode,
           fallback_reason: result.mode === "plain" ? result.fallbackReason : undefined,
           connector_count: connectorIds?.length ?? 0,
-          subject_token_present: Boolean(derived.subjectToken),
+          message_sender_proof_present: Boolean(derived.messageSenderProof),
           return_line_present: Boolean(returnTarget?.messageLinePhone),
         },
       });
@@ -647,7 +651,7 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
         properties: {
           link_mode: mode,
           connector_count: connectorIds?.length ?? 0,
-          subject_token_present: Boolean(derived.subjectToken),
+          message_sender_proof_present: Boolean(derived.messageSenderProof),
           return_line_present: Boolean(returnTarget?.messageLinePhone),
           error_kind: error instanceof Error ? error.name : "unknown",
         },
@@ -685,7 +689,7 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
   async function createMessageUrl(request: {
     reason: ConfigureSpectrumMessageUrlReason;
     ctx: ConfigureSpectrumContext;
-    subjectToken?: string;
+    messageSenderProof?: string;
     connectorIds?: string[];
     idempotencyKey: string;
     returnTarget?: MessageReturnTarget;
@@ -773,16 +777,16 @@ async function deriveConfiguredIdentity(input: ConfigureSpectrumIdentityInput, o
   const externalId = options.identity?.externalId
     ? await options.identity.externalId({ ...input, subjectKey })
     : `spectrum:${subjectKey}`;
-  const subjectToken = options.identity?.subjectToken
-    ? await options.identity.subjectToken(input)
-    : base.subjectToken;
+  const messageSenderProof = options.identity?.messageSenderProof
+    ? await options.identity.messageSenderProof(input)
+    : base.messageSenderProof;
   return {
     ...base,
     subjectKey,
     threadKey,
     externalId,
     phoneCandidates: unique(customPhoneCandidates),
-    ...(subjectToken ? { subjectToken } : {}),
+    ...(messageSenderProof ? { messageSenderProof } : {}),
   };
 }
 
@@ -860,7 +864,7 @@ type MessageUrlPayload = {
   channel: string;
   subject: { key: string; externalId: string; senderId?: string };
   thread?: { key?: string; spaceId?: string; messageId?: string };
-  subjectToken?: string;
+  messageSenderProof?: string;
   connectors?: string[];
   displayName?: string;
   agentLogo?: string;
@@ -945,7 +949,7 @@ function messageLineRegistrationPayload(
 async function messageUrlPayload(request: {
   reason: ConfigureSpectrumMessageUrlReason;
   ctx: ConfigureSpectrumContext;
-  subjectToken?: string;
+  messageSenderProof?: string;
   connectorIds?: string[];
   idempotencyKey: string;
   returnTarget?: MessageReturnTarget;
@@ -966,7 +970,7 @@ async function messageUrlPayload(request: {
       spaceId: request.ctx.thread.spaceId,
       ...(request.ctx.thread.messageId ? { messageId: request.ctx.thread.messageId } : {}),
     },
-    ...(request.subjectToken ? { subjectToken: request.subjectToken } : {}),
+    ...(request.messageSenderProof ? { messageSenderProof: request.messageSenderProof } : {}),
     ...(request.connectorIds && request.connectorIds.length > 0 ? { connectors: request.connectorIds } : {}),
     ...(signIn?.displayName ? { displayName: signIn.displayName } : {}),
     ...(signIn?.agentLogo ? { agentLogo: signIn.agentLogo } : {}),
@@ -1076,9 +1080,9 @@ function normalizeMessageUrlResult(value: unknown): ConfigureSpectrumMessageUrlR
 
 function messageUrlFallbackReason(value: string | undefined): ConfigureSpectrumMessageUrlFallbackReason | undefined {
   if (
-    value === "subject_signature_missing" ||
-    value === "subject_signature_invalid" ||
-    value === "subject_signature_unsupported"
+    value === "sender_proof_missing" ||
+    value === "sender_proof_invalid" ||
+    value === "sender_proof_unsupported"
   ) {
     return value;
   }

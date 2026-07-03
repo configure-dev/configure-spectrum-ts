@@ -22,14 +22,7 @@ Existing Spectrum apps can add the adapter:
 npm install configure-spectrum
 ```
 
-New apps should install Spectrum according to [Photon's docs](https://photon.codes/docs/) before adding this package. If your package manager does not auto-install peer dependencies, install `spectrum-ts` explicitly. This package depends on `configure@^1.1.14` for the hosted message URL, hosted completion, message-line registry helpers, and profile runtime.
-
-Local package testing can use a packed tarball:
-
-```bash
-npm pack
-npm install ./configure-spectrum-0.1.0-preview.2.tgz
-```
+New apps should install Spectrum according to [Photon's docs](https://photon.codes/docs/) before adding this package. If your package manager does not auto-install peer dependencies, install `spectrum-ts` explicitly. This package depends on `configure@^1.1.16` for the profile runtime plus hosted message URL, hosted completion, message-line registry, and sender-proof fallback helpers.
 
 ## Existing Handler
 
@@ -56,10 +49,7 @@ const configureSpectrum = withConfigure({
 
 for await (const [space, message] of app.messages) {
   await configureSpectrum.handle(space, message, async (ctx) => {
-    const { profile } = await ctx.profile.read({
-      sections: ["identity", "preferences", "summary"],
-    });
-    const profileContext = profile.format({ guidelines: false });
+    let configureReadUsed = false;
     const tools = ctx.profile.tools({
       connectors: ["gmail", "calendar"],
       actions: ["email.send", "calendar.create_event"],
@@ -67,14 +57,17 @@ for await (const [space, message] of app.messages) {
 
     const reply = await runAgent({
       message,
-      profileContext,
       tools,
-      executeTool: ctx.profile.executeTool,
+      executeTool: async (toolCall) => {
+        const result = await ctx.profile.executeTool(toolCall);
+        if (isReadBackedConfigureTool(toolCall.name)) configureReadUsed = true;
+        return result;
+      },
       linked: ctx.linked,
     });
 
     await message.reply(reply);
-    ctx.profile.commit({
+    if (configureReadUsed) ctx.profile.commit({
       messages: [
         { role: "user", content: ctx.text },
         { role: "assistant", content: reply },
@@ -82,11 +75,17 @@ for await (const [space, message] of app.messages) {
     }).catch(() => {});
   });
 }
+
+function isReadBackedConfigureTool(name: string): boolean {
+  return name === "configure_profile_read" || name === "configure_profile_search";
+}
 ```
 
 `ctx.profile` is built from a linked Configure token when one is available, or from a developer-scoped external user before sign-in. That lets the rest of your agent use one profile runtime while Configure enforces the appropriate access boundary.
 
-Use `ctx.profile.tools({ connectors, actions })` as the normal model-loop integration when your hosted Configure surface can request those capabilities. Choose `sections` when the app wants an optional first-turn orientation packet, then render it with `profile.format()`. Keep Configure tools available so the model can call `configure_profile_read` or `configure_profile_search` for overview, concrete memories, source-specific questions like "what does ChatGPT remember about me?", or details that need exact source attribution. After a read-backed turn, call `ctx.profile.commit()` with bounded user/assistant turn evidence.
+Use `ctx.profile.tools({ connectors, actions })` as the normal model-loop integration when your hosted Configure surface requested connector/action setup and your app supports those capabilities. Keep Configure tools available so the model can call `configure_profile_read` or `configure_profile_search` for overview, concrete memories, source-specific questions like "what does ChatGPT remember about me?", or details that need exact source attribution. Host-side `ctx.profile.read({ sections })` plus `profile.format()` is available for app-owned UI, inspection, or explicit context slots; it is not required for the normal model loop. After a read-backed turn, call `ctx.profile.commit()` with bounded user/assistant turn evidence.
+
+Action tools, such as sending email or creating calendar events, change external state. Tool visibility means hosted/app capability, not user authorization. Expose actions when the product has requested and supports that capability; `ctx.profile.executeTool()` still fails closed when linked state, connector state, permissions, scopes, or approval state are missing. If a connector/action is unavailable, send the hosted connect, reconnect, permissions, or approval link.
 
 When `connect` sends a hosted link, `handle()` returns before the handler runs. The model does not need to decide when to produce Configure sign-in URLs.
 
@@ -106,7 +105,7 @@ const configureSpectrum = withConfigure({
 });
 ```
 
-Set `signIn.linkMode` to `"managed"` to route message sign-in through Configure's message URL API. When a return line is available, the adapter registers that line for the configured agent before requesting the URL. Configure returns the hosted fallback when signed subject evidence is missing or unsupported, and reserves code-bearing links for verified message subjects. The older `"auto"` value is still accepted as a compatibility alias for `"managed"`.
+Set `signIn.linkMode` to `"managed"` to route message sign-in through Configure's message URL API. When a return line is available, the adapter registers that line for the configured agent before requesting the URL. Configure returns the hosted fallback when signed sender proof is missing or unsupported, and reserves code-bearing links for verified message senders. The older `"auto"` value is still accepted as a compatibility alias for `"managed"`.
 
 For production visibility, attach `onEvent` and send the redacted adapter events to your own telemetry sink:
 
@@ -204,7 +203,7 @@ For iMessage dedicated-line spaces, Spectrum includes the routed sending line on
 
 `signIn.agentPhone` is the explicit app-bound return line. It can be a string or an async resolver that calls Photon for the current line. The resolved value is validated as E.164; values such as `shared` are ignored rather than sent to Configure.
 
-In `linkMode: "managed"`, valid return lines are registered through Configure before the adapter asks for a message URL. If registration fails, the adapter omits the return phone and keeps the hosted sign-in path usable.
+In `linkMode: "managed"`, valid return lines are registered through Configure before the adapter asks for a message URL. If registration or message URL creation fails, the adapter omits return-phone metadata from its local fallback and keeps the hosted sign-in path usable.
 
 You can still send a link manually from application code:
 
@@ -225,7 +224,7 @@ await ctx.replyWithReconnect({
 return;
 ```
 
-Reconnect links use the same hosted surface as sign-in, but they only refresh the requested app connection. In `linkMode: "managed"`, the adapter asks Configure for a message URL and accepts the plain hosted reconnect URL unless verified Spectrum subject evidence allows a code-bearing link.
+Reconnect links use the same hosted surface as sign-in, but they only refresh the requested app connection. In `linkMode: "managed"`, the adapter asks Configure for a message URL and accepts the plain hosted reconnect URL unless verified Spectrum sender proof allows a code-bearing link.
 
 ## Webhook Composition
 
