@@ -736,7 +736,7 @@ The quickstart should continue to:
 
 - use adapter-owned `connect` behavior
 - avoid putting `ctx.signInUrl()` in model/system prompt text
-- use `ctx.linked || profileHasData(profile)` before including profile context
+- include only non-empty bounded `profile.format({ maxChars })` output as pre-read context
 - document that the current plain link flow depends on phone-backed sender evidence
 - consume the adapter package instead of hand-rolling message-line registration or URL minting
 - switch to SDK-backed message-line registration once the canonical SDK method exists, while keeping code-bearing links gated on verified Photon signatures
@@ -745,12 +745,9 @@ The model prompt should describe only the agent's behavior and available context
 
 ```ts
 const { profile } = await ctx.profile.read();
-const profileContext = profile.format({ guidelines: false }).trim();
-const contextLabel = ctx.linked
-  ? "Approved Configure profile context for this sender:"
-  : "Developer-scoped Configure context for this sender. This is not federated cross-agent profile access:";
+const profileContext = profile.format({ guidelines: false, maxChars: 6_000 }).trim();
 const system = profileContext
-  ? `${STYLE}\n\n${contextLabel}\n${profileContext}\n\nUse Configure context selectively. Do not expose private facts unless they are needed for the user's request.`
+  ? `${STYLE}\n\n${profileContext}\n\nUse Configure context selectively. Do not expose private facts unless they are needed for the user's request.`
   : `${STYLE}\n\nNo approved Configure profile is available for this sender yet. Do not claim personal context you do not have.`;
 ```
 
