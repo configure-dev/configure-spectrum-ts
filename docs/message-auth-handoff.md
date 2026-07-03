@@ -134,7 +134,7 @@ const configureSpectrum = withConfigure({
   agent,
   store,
   signIn: {
-    linkMode: "auto",
+    linkMode: "managed",
   },
 });
 ```
@@ -614,7 +614,7 @@ const configureSpectrum = withConfigure({
   agent,
   store,
   signIn: {
-    linkMode: "auto", // "plain" | "minted" | "auto"
+    linkMode: "managed", // "plain" | "managed" | "minted"
   },
 });
 ```
@@ -622,7 +622,7 @@ const configureSpectrum = withConfigure({
 Recommended behavior:
 
 - `plain`: current `https://sign-in.me/{agent}` hosted behavior, optionally with validated message return metadata.
-- `auto`: resolve any reliable return line, register it through `configure.auth.registerMessageLine()`, then call `configure.auth.createMessageSignInUrl()`; use `mode: "minted"` responses when verification succeeds and plain fallback otherwise.
+- `managed`: resolve any reliable return line, register it through `configure.auth.registerMessageLine()`, then call `configure.auth.createMessageSignInUrl()`; use `mode: "minted"` responses when verification succeeds and plain fallback otherwise. `auto` remains a compatibility alias until a breaking adapter release.
 - `minted`: private-preview/debug mode that requires the message URL API path. It must still accept `mode: "plain"` fallback responses and must never force a code-bearing URL without verified Photon-signed subject evidence.
 
 The adapter should call `configure.auth.registerMessageLine()` for return-line registration and `configure.auth.createMessageSignInUrl()` for message URL creation. The minimum supported `configure` version includes both helpers, so adapter code should not carry a direct HTTP bridge.
@@ -821,7 +821,7 @@ Spectrum adapter:
 
 Quickstart:
 
-- Use `linkMode: "auto"` to exercise the message URL path with plain fallback. **Baseline complete.**
+- Use `linkMode: "managed"` to exercise the message URL path with plain fallback. **Baseline complete.**
 - Refresh vendored tarball after adapter changes. **Baseline complete.**
 - Refresh quickstart after Spectrum moves to the published npm package. **Next.**
 

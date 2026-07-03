@@ -10,7 +10,7 @@ import type { Message, Space } from "spectrum-ts";
 export type ProfileRuntime = ReturnType<Configure["profile"]>;
 
 export type ConfigureSpectrumConnectMode = "manual" | "intent" | "first-message";
-export type ConfigureSpectrumLinkMode = "plain" | "auto" | "minted";
+export type ConfigureSpectrumLinkMode = "plain" | "managed" | "auto" | "minted";
 export type ConfigureSpectrumMessageUrlReason = "signin" | "reconnect" | "permissions";
 export type ConfigureSpectrumMessageUrlMode = "minted" | "plain";
 export type ConfigureSpectrumMessageUrlFallbackReason =

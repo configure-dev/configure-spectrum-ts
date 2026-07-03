@@ -1,6 +1,6 @@
 {
   "name": "configure-spectrum",
-  "version": "0.1.0-preview.1",
+  "version": "0.1.0-preview.2",
   "description": "Configure identity and profile context for Photon Spectrum message agents.",
   "license": "MIT",
   "type": "module",

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.1.0-preview.2
+
+- Adds `signIn.linkMode: "managed"` as the public name for Configure-managed message sign-in and reconnect URL orchestration.
+- Keeps `signIn.linkMode: "auto"` as a backwards-compatible alias for `managed`.
+- Updates README, production notes, examples, and tests to teach `managed`.
+
 ## 0.1.0-preview.1
 
 - Depends on `configure@^1.1.13` so message URL creation and message-line registration go through the canonical SDK helpers.

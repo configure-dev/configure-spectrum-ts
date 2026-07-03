@@ -18,6 +18,7 @@ import type {
   ConfigureSpectrumFactory,
   ConfigureSpectrumHandleResult,
   ConfigureSpectrumIdentityInput,
+  ConfigureSpectrumLinkMode,
   ConfigureSpectrumMessageUrlFallbackReason,
   ConfigureSpectrumMessageUrlReason,
   ConfigureSpectrumMessageUrlResult,
@@ -46,6 +47,7 @@ const SAFE_EVENT_KEYS = new Set([
   "subject_token_present",
   "tool_count",
 ]);
+type ActiveConfigureSpectrumLinkMode = Exclude<ConfigureSpectrumLinkMode, "auto">;
 
 function normalizeEventKey(key: string): string {
   return key.replace(/[A-Z]/g, (match) => `_${match.toLowerCase()}`).toLowerCase();
@@ -78,6 +80,11 @@ function sanitizeEventProperties(properties: Record<string, unknown> = {}): Reco
     if (sanitized !== undefined) safe[key] = sanitized;
   }
   return safe;
+}
+
+function normalizeLinkMode(mode: ConfigureSpectrumLinkMode | undefined): ActiveConfigureSpectrumLinkMode {
+  if (mode === "auto") return "managed";
+  return mode ?? "plain";
 }
 
 function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectrum {
@@ -533,6 +540,7 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
         const body = await signInMessage(ctx, url, replyOptions.message ?? options.connect?.message);
         await input.message.reply(body);
         const messageUrl = await cachedMessageUrl(ctx, "signin", connectorIds(options.signIn?.connectors))?.catch(() => null);
+        const linkMode = normalizeLinkMode(options.signIn?.linkMode);
         await options.store.saveSubject(input.derived.subjectKey, {
           externalId: input.derived.externalId,
           signInSentAt: new Date().toISOString(),
@@ -549,7 +557,7 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
           outcome: "ok",
           reason: "reply_with_signin",
           properties: {
-            link_mode: options.signIn?.linkMode ?? "plain",
+            link_mode: linkMode,
             message_url_mode: messageUrl?.mode ?? "plain",
             fallback_reason: messageUrl?.mode === "plain" ? messageUrl.fallbackReason : undefined,
           },
@@ -561,13 +569,14 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
         const body = await signInMessage(ctx, url, replyOptions.message ?? "Reconnect your Configure apps: {url}");
         await input.message.reply(body);
         const messageUrl = await cachedMessageUrl(ctx, "reconnect", reconnectConnectors)?.catch(() => null);
+        const linkMode = normalizeLinkMode(options.signIn?.linkMode);
         emitContextEvent(ctx, "reconnect_link_sent", {
           actionState: "send_reconnect",
           outcome: "ok",
           reason: "reply_with_reconnect",
           properties: {
             connector_count: reconnectConnectors?.length ?? 0,
-            link_mode: options.signIn?.linkMode ?? "plain",
+            link_mode: linkMode,
             message_url_mode: messageUrl?.mode ?? "plain",
             fallback_reason: messageUrl?.mode === "plain" ? messageUrl.fallbackReason : undefined,
           },
@@ -584,7 +593,7 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
     connectorIds?: string[],
     returnTarget?: MessageReturnTarget
   ): Promise<ConfigureSpectrumMessageUrlResult | null> {
-    const mode = options.signIn?.linkMode ?? "plain";
+    const mode = normalizeLinkMode(options.signIn?.linkMode);
     if (mode === "plain") return Promise.resolve(null);
 
     const existing = cachedMessageUrl(ctx, reason, connectorIds);

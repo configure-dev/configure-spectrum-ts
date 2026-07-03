@@ -24,7 +24,7 @@ For Spectrum iMessage dedicated-line spaces, the adapter uses an explicit `signI
 
 If Photon exposes the current sending line through an API, pass `signIn.agentPhone` as a sync or async resolver. The adapter calls it when building sign-in and reconnect links, validates the result as E.164, and omits invalid values.
 
-In `linkMode: "auto"`, the adapter registers valid return lines with Configure before requesting a message URL. If registration fails, it drops the return phone and keeps the hosted sign-in fallback usable.
+In `linkMode: "managed"`, the adapter registers valid return lines with Configure before requesting a message URL. If registration fails, it drops the return phone and keeps the hosted sign-in fallback usable.
 
 If the space is shared-mode (`shared`), local-mode, blank, or otherwise not a valid phone number, the adapter omits the return phone and leaves Configure on the hosted completion fallback. Do not store or pass shared-mode sentinels as phone numbers.
 
