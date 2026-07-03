@@ -721,6 +721,90 @@ describe("withConfigure", () => {
     expect(inbound.reply).toHaveBeenCalledWith(expect.stringContaining("https://sign-in.me/test-agent"));
     expect(handler).not.toHaveBeenCalled();
   });
+
+  it("emits redacted adapter journey events", async () => {
+    const store = withConfigure.localStore();
+    const events: unknown[] = [];
+    const fetch = jsonFetch(({ pathname, body }) => {
+      if (pathname === "/v1/auth/sign-in/message-lines") {
+        return {
+          line: {
+            id: "line-1",
+            channel: "slack",
+            phoneLast4: "0123",
+            status: "active",
+          },
+        };
+      }
+      if (pathname === "/v1/auth/sign-in/message-url") {
+        expect(body).toMatchObject({
+          reason: "signin",
+          channel: "slack",
+          messageLinePhone: "+14155550123",
+        });
+        return {
+          mode: "plain",
+          url: "https://sign-in.me/test-agent",
+          reason: "signin",
+          fallbackReason: "subject_signature_missing",
+        };
+      }
+      throw new Error(`unexpected request: ${pathname}`);
+    });
+    const configureSpectrum = withConfigure({
+      ...baseOptions,
+      store,
+      fetch,
+      signIn: {
+        agentPhone: "+14155550123",
+        linkMode: "auto",
+      },
+      connect: {
+        mode: "intent",
+        behavior: "send-and-stop",
+      },
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+    const inbound = message({
+      platform: "slack",
+      content: { type: "text", text: "connect my profile" },
+      sender: { id: "slack-user" },
+    });
+    const handler = vi.fn();
+
+    await expect(configureSpectrum.handle(space(), inbound, handler)).resolves.toEqual({ status: "connect-link-sent" });
+
+    const names = events.map((event) => (event as { event?: string }).event);
+    expect(names).toEqual(expect.arrayContaining([
+      "identity_resolution_started",
+      "identity_resolved",
+      "signin_required",
+      "message_url_requested",
+      "message_line_registration_attempted",
+      "message_line_registration_completed",
+      "message_url_created",
+      "signin_link_sent",
+    ]));
+    expect(events.find((event) => (event as { event?: string }).event === "message_url_created")).toMatchObject({
+      surface: "adapter",
+      agent: "test-agent",
+      channel: "slack",
+      outcome: "fallback",
+      properties: {
+        link_mode: "auto",
+        message_url_mode: "plain",
+        fallback_reason: "subject_signature_missing",
+        return_line_present: true,
+      },
+    });
+    const serialized = JSON.stringify(events);
+    expect(serialized).not.toContain("+14155550123");
+    expect(serialized).not.toContain("https://");
+    expect(serialized).not.toContain("agent-token");
+    expect(handler).not.toHaveBeenCalled();
+  });
 });
 
 function space(overrides: Partial<Space> & Record<string, unknown> = {}): Space {

@@ -87,6 +87,31 @@ const configureSpectrum = withConfigure({
 
 Set `signIn.linkMode` to `"auto"` to route message sign-in through Configure's message URL API. When a return line is available, the adapter registers that line for the configured agent before requesting the URL. Configure returns the hosted fallback when signed subject evidence is missing or unsupported, and reserves code-bearing links for verified message subjects.
 
+For production visibility, attach `onEvent` and send the redacted adapter events to your own telemetry sink:
+
+```ts
+const configureSpectrum = withConfigure({
+  apiKey,
+  publishableKey,
+  agent,
+  store,
+  signIn: { linkMode: "auto" },
+  onEvent(event) {
+    console.info("[configure]", {
+      event: event.event,
+      channel: event.channel,
+      identityState: event.identityState,
+      actionState: event.actionState,
+      outcome: event.outcome,
+      reason: event.reason,
+      properties: event.properties,
+    });
+  },
+});
+```
+
+The hook is application-owned. The adapter does not send telemetry to Configure. Events include states, counts, modes, booleans, and reason codes; they intentionally omit raw phone numbers, tokens, URLs, message bodies, connector payloads, and profile facts.
+
 `store` persists adapter state between messages: sender mappings, approved Configure tokens, sign-in delivery state, completion journeys, and webhook idempotency. It does not store Configure user memories or profile data. Most apps back this with the same persistence they already use for sessions, users, or webhook idempotency.
 
 For local development and examples:
