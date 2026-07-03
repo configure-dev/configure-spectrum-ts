@@ -214,7 +214,7 @@ describe("withConfigure", () => {
     expect(url.searchParams.get("message_line_phone")).toBe("+14155550999");
   });
 
-  it("uses the message URL API in auto mode when signed subject evidence exists", async () => {
+  it("uses the message URL API in managed mode when signed subject evidence exists", async () => {
     const store = withConfigure.localStore();
     const fetch = jsonFetch(({ pathname, body }) => {
       expect(pathname).toBe("/v1/auth/sign-in/message-url");
@@ -240,7 +240,7 @@ describe("withConfigure", () => {
       ...baseOptions,
       store,
       fetch,
-      signIn: { linkMode: "auto" },
+      signIn: { linkMode: "managed" },
       identity: {
         subjectKey: () => "subject-1",
         externalId: () => "spectrum:subject-1",
@@ -253,7 +253,34 @@ describe("withConfigure", () => {
     await expect(ctx.signInUrl()).resolves.toBe("https://sign-in.me/test-agent");
   });
 
-  it("uses the message URL API in auto mode for plain fallback links", async () => {
+  it("accepts auto as a compatibility alias for managed link mode", async () => {
+    const store = withConfigure.localStore();
+    const fetch = jsonFetch(({ pathname }) => {
+      expect(pathname).toBe("/v1/auth/sign-in/message-url");
+      return {
+        mode: "plain",
+        url: "https://sign-in.me/test-agent",
+        reason: "signin",
+        fallbackReason: "subject_signature_missing",
+      };
+    });
+    const configureSpectrum = withConfigure({
+      ...baseOptions,
+      store,
+      fetch,
+      signIn: { linkMode: "auto" },
+      identity: {
+        subjectKey: () => "subject-1",
+        externalId: () => "spectrum:subject-1",
+      },
+    });
+
+    const ctx = await configureSpectrum.resolve(space(), message());
+
+    await expect(ctx.signInUrl()).resolves.toBe("https://sign-in.me/test-agent");
+  });
+
+  it("uses the message URL API in managed mode for plain fallback links", async () => {
     const store = withConfigure.localStore();
     const fetch = jsonFetch(({ pathname, body }) => {
       if (pathname === "/v1/auth/sign-in/message-lines") {
@@ -288,7 +315,7 @@ describe("withConfigure", () => {
       ...baseOptions,
       store,
       fetch,
-      signIn: { linkMode: "auto" },
+      signIn: { linkMode: "managed" },
       identity: {
         subjectKey: () => "subject-1",
         externalId: () => "spectrum:subject-1",
@@ -333,7 +360,7 @@ describe("withConfigure", () => {
       ...baseOptions,
       store,
       fetch,
-      signIn: { linkMode: "auto" },
+      signIn: { linkMode: "managed" },
       connect: {
         mode: "first-message",
         behavior: "send-and-stop",
@@ -394,7 +421,7 @@ describe("withConfigure", () => {
       store,
       fetch,
       signIn: {
-        linkMode: "auto",
+        linkMode: "managed",
         agentPhone,
         messageBody: "done!",
       },
@@ -437,7 +464,7 @@ describe("withConfigure", () => {
       store,
       fetch,
       signIn: {
-        linkMode: "auto",
+        linkMode: "managed",
         agentPhone: "shared",
         messageBody: "done!",
       },
@@ -526,7 +553,7 @@ describe("withConfigure", () => {
     expect(url.searchParams.get("message_body")).toBe("done!");
   });
 
-  it("uses the message URL API for reconnect in auto mode when signed subject evidence exists", async () => {
+  it("uses the message URL API for reconnect in managed mode when signed subject evidence exists", async () => {
     const store = withConfigure.localStore();
     const fetch = jsonFetch(({ pathname, body }) => {
       if (pathname === "/v1/auth/sign-in/message-lines") {
@@ -564,7 +591,7 @@ describe("withConfigure", () => {
       store,
       fetch,
       signIn: {
-        linkMode: "auto",
+        linkMode: "managed",
         agentPhone: "+14155550000",
         messageBody: "done!",
       },
@@ -602,7 +629,7 @@ describe("withConfigure", () => {
       ...baseOptions,
       store,
       fetch,
-      signIn: { linkMode: "auto" },
+      signIn: { linkMode: "managed" },
       identity: {
         subjectKey: () => "subject-1",
         externalId: () => "spectrum:subject-1",
@@ -757,7 +784,7 @@ describe("withConfigure", () => {
       fetch,
       signIn: {
         agentPhone: "+14155550123",
-        linkMode: "auto",
+        linkMode: "managed",
       },
       connect: {
         mode: "intent",
@@ -793,7 +820,7 @@ describe("withConfigure", () => {
       channel: "slack",
       outcome: "fallback",
       properties: {
-        link_mode: "auto",
+        link_mode: "managed",
         message_url_mode: "plain",
         fallback_reason: "subject_signature_missing",
         return_line_present: true,

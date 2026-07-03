@@ -85,7 +85,7 @@ const configureSpectrum = withConfigure({
 });
 ```
 
-Set `signIn.linkMode` to `"auto"` to route message sign-in through Configure's message URL API. When a return line is available, the adapter registers that line for the configured agent before requesting the URL. Configure returns the hosted fallback when signed subject evidence is missing or unsupported, and reserves code-bearing links for verified message subjects.
+Set `signIn.linkMode` to `"managed"` to route message sign-in through Configure's message URL API. When a return line is available, the adapter registers that line for the configured agent before requesting the URL. Configure returns the hosted fallback when signed subject evidence is missing or unsupported, and reserves code-bearing links for verified message subjects. The older `"auto"` value is still accepted as a compatibility alias for `"managed"`.
 
 For production visibility, attach `onEvent` and send the redacted adapter events to your own telemetry sink:
 
@@ -95,7 +95,7 @@ const configureSpectrum = withConfigure({
   publishableKey,
   agent,
   store,
-  signIn: { linkMode: "auto" },
+  signIn: { linkMode: "managed" },
   onEvent(event) {
     console.info("[configure]", {
       event: event.event,
@@ -161,7 +161,7 @@ const configureSpectrum = withConfigure({
   agent,
   store,
   signIn: {
-    linkMode: "auto",
+    linkMode: "managed",
   },
   connect: {
     mode: "intent",
@@ -183,7 +183,7 @@ For iMessage dedicated-line spaces, Spectrum includes the routed sending line on
 
 `signIn.agentPhone` is the explicit app-bound return line. It can be a string or an async resolver that calls Photon for the current line. The resolved value is validated as E.164; values such as `shared` are ignored rather than sent to Configure.
 
-In `linkMode: "auto"`, valid return lines are registered through Configure before the adapter asks for a message URL. If registration fails, the adapter omits the return phone and keeps the hosted sign-in path usable.
+In `linkMode: "managed"`, valid return lines are registered through Configure before the adapter asks for a message URL. If registration fails, the adapter omits the return phone and keeps the hosted sign-in path usable.
 
 You can still send a link manually from application code:
 
@@ -204,7 +204,7 @@ await ctx.replyWithReconnect({
 return;
 ```
 
-Reconnect links use the same hosted surface as sign-in, but they only refresh the requested app connection. In `linkMode: "auto"`, the adapter asks Configure for a message URL and accepts the plain hosted reconnect URL unless verified Spectrum subject evidence allows a code-bearing link.
+Reconnect links use the same hosted surface as sign-in, but they only refresh the requested app connection. In `linkMode: "managed"`, the adapter asks Configure for a message URL and accepts the plain hosted reconnect URL unless verified Spectrum subject evidence allows a code-bearing link.
 
 ## Webhook Composition
 
