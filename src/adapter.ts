@@ -87,6 +87,10 @@ function normalizeLinkMode(mode: ConfigureSpectrumLinkMode | undefined): ActiveC
   return mode ?? "plain";
 }
 
+function safeErrorFields(error: unknown): Record<string, string> {
+  return { error_kind: error instanceof Error ? error.name : typeof error };
+}
+
 function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectrum {
   assertRequired(options.apiKey, "apiKey");
   assertRequired(options.publishableKey, "publishableKey");
@@ -128,14 +132,10 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
     };
     try {
       void Promise.resolve(options.onEvent(event)).catch((error) => {
-        options.logger?.warn?.("configure spectrum event hook failed", {
-          error: error instanceof Error ? error.message : String(error),
-        });
+        options.logger?.warn?.("configure spectrum event hook failed", safeErrorFields(error));
       });
     } catch (error) {
-      options.logger?.warn?.("configure spectrum event hook failed", {
-        error: error instanceof Error ? error.message : String(error),
-      });
+      options.logger?.warn?.("configure spectrum event hook failed", safeErrorFields(error));
     }
   }
 
@@ -277,9 +277,7 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
           reason: "recognition_error",
           properties: { error_kind: error instanceof Error ? error.name : "unknown" },
         });
-        options.logger?.warn?.("configure phone recognition failed; falling back to externalId", {
-          error: error instanceof Error ? error.message : String(error),
-        });
+        options.logger?.warn?.("configure phone recognition failed; falling back to externalId", safeErrorFields(error));
       }
     }
 
@@ -440,9 +438,7 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
           error_kind: error instanceof Error ? error.name : "unknown",
         },
       });
-      options.logger?.warn?.("configure token validation failed; falling back to externalId", {
-        error: error instanceof Error ? error.message : String(error),
-      });
+      options.logger?.warn?.("configure token validation failed; falling back to externalId", safeErrorFields(error));
       return false;
     }
   }
@@ -656,9 +652,7 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
           error_kind: error instanceof Error ? error.name : "unknown",
         },
       });
-      options.logger?.warn?.("configure message URL creation failed; falling back to plain sign-in link", {
-        error: error instanceof Error ? error.message : String(error),
-      });
+      options.logger?.warn?.("configure message URL creation failed; falling back to plain sign-in link", safeErrorFields(error));
       return null;
     });
     setCachedMessageUrl(ctx, reason, connectorIds, pending);
@@ -751,9 +745,7 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
           error_kind: error instanceof Error ? error.name : "unknown",
         },
       });
-      options.logger?.warn?.("configure message line registration failed; omitting hosted return phone", {
-        error: error instanceof Error ? error.message : String(error),
-      });
+      options.logger?.warn?.("configure message line registration failed; omitting hosted return phone", safeErrorFields(error));
       return false;
     }
   }
@@ -1012,9 +1004,7 @@ async function configuredAgentPhone(
     try {
       return e164Phone(await value(ctx));
     } catch (error) {
-      options.logger?.warn?.("configure spectrum agent phone resolver failed; omitting hosted return phone", {
-        error: error instanceof Error ? error.message : String(error),
-      });
+      options.logger?.warn?.("configure spectrum agent phone resolver failed; omitting hosted return phone", safeErrorFields(error));
       return undefined;
     }
   }
