@@ -22,7 +22,7 @@ Existing Spectrum apps can add the adapter:
 npm install configure-spectrum
 ```
 
-New apps should install Spectrum according to [Photon's docs](https://photon.codes/docs/) before adding this package. If your package manager does not auto-install peer dependencies, install `spectrum-ts` explicitly. This package depends on `configure@^1.1.13` for the hosted message URL and message-line registry helpers.
+New apps should install Spectrum according to [Photon's docs](https://photon.codes/docs/) before adding this package. If your package manager does not auto-install peer dependencies, install `spectrum-ts` explicitly. This package depends on `configure@^1.1.14` for the hosted message URL, hosted completion, and message-line registry helpers.
 
 Local package testing can use a packed tarball:
 
