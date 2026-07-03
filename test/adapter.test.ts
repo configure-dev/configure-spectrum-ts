@@ -214,7 +214,7 @@ describe("withConfigure", () => {
     expect(url.searchParams.get("message_line_phone")).toBe("+14155550999");
   });
 
-  it("uses the message URL API in managed mode when signed subject evidence exists", async () => {
+  it("uses the message URL API in managed mode when signed message sender proof exists", async () => {
     const store = withConfigure.localStore();
     const fetch = jsonFetch(({ pathname, body }) => {
       expect(pathname).toBe("/v1/auth/sign-in/message-url");
@@ -226,14 +226,14 @@ describe("withConfigure", () => {
           externalId: "spectrum:subject-1",
           senderId: "slack-user",
         },
-        subjectToken: "photon.signed.subject",
+        messageSenderProof: "photon.signed.sender",
         returnMode: "message",
       });
       return {
         mode: "plain",
         url: "https://sign-in.me/test-agent",
         reason: "signin",
-        fallbackReason: "subject_signature_unsupported",
+        fallbackReason: "sender_proof_unsupported",
       };
     });
     const configureSpectrum = withConfigure({
@@ -244,7 +244,7 @@ describe("withConfigure", () => {
       identity: {
         subjectKey: () => "subject-1",
         externalId: () => "spectrum:subject-1",
-        subjectToken: () => "photon.signed.subject",
+        messageSenderProof: () => "photon.signed.sender",
       },
     });
 
@@ -261,7 +261,7 @@ describe("withConfigure", () => {
         mode: "plain",
         url: "https://sign-in.me/test-agent",
         reason: "signin",
-        fallbackReason: "subject_signature_missing",
+        fallbackReason: "sender_proof_missing",
       };
     });
     const configureSpectrum = withConfigure({
@@ -303,12 +303,12 @@ describe("withConfigure", () => {
         messageLinePhone: "+14155550123",
         returnMode: "message",
       });
-      expect((body as Record<string, unknown>).subjectToken).toBeUndefined();
+      expect((body as Record<string, unknown>).messageSenderProof).toBeUndefined();
       return {
         mode: "plain",
         url: "https://sign-in.me/test-agent?delivery=message&message_line_phone=%2B14155550123",
         reason: "signin",
-        fallbackReason: "subject_signature_missing",
+        fallbackReason: "sender_proof_missing",
       };
     });
     const configureSpectrum = withConfigure({
@@ -328,6 +328,41 @@ describe("withConfigure", () => {
     );
 
     await expect(ctx.signInUrl()).resolves.toContain("message_line_phone=%2B14155550123");
+  });
+
+  it("omits return metadata from local fallback links when managed message URL creation fails", async () => {
+    const store = withConfigure.localStore();
+    const fetch = (async () => {
+      throw new Error("message URL API unavailable");
+    }) as typeof fetch;
+    const configureSpectrum = withConfigure({
+      ...baseOptions,
+      store,
+      fetch,
+      signIn: {
+        linkMode: "managed",
+        agentPhone: "+14155550123",
+        messageBody: "done!",
+      },
+      identity: {
+        subjectKey: () => "subject-1",
+        externalId: () => "spectrum:subject-1",
+      },
+    });
+    const ctx = await configureSpectrum.resolve(space(), message());
+
+    const signIn = new URL(await ctx.signInUrl());
+    expect(signIn.origin + signIn.pathname).toBe("https://sign-in.me/test-agent");
+    expect(signIn.searchParams.get("delivery")).toBeNull();
+    expect(signIn.searchParams.get("message_line_phone")).toBeNull();
+    expect(signIn.searchParams.get("message_body")).toBeNull();
+
+    const reconnect = new URL(await ctx.reconnectUrl({ connectors: ["gmail"] }));
+    expect(reconnect.origin + reconnect.pathname).toBe("https://sign-in.me/test-agent/reconnect");
+    expect(reconnect.searchParams.get("connectors")).toBe("gmail");
+    expect(reconnect.searchParams.get("delivery")).toBeNull();
+    expect(reconnect.searchParams.get("message_line_phone")).toBeNull();
+    expect(reconnect.searchParams.get("message_body")).toBeNull();
   });
 
   it("routes hosted completion journeys through the message URL API in managed mode", async () => {
@@ -360,7 +395,7 @@ describe("withConfigure", () => {
         mode: "plain",
         url: "https://sign-in.me/test-agent?delivery=message&message_line_phone=%2B14155550123&journey=from-api",
         reason: "signin",
-        fallbackReason: "subject_signature_missing",
+        fallbackReason: "sender_proof_missing",
       };
     });
     const configureSpectrum = withConfigure({
@@ -404,7 +439,7 @@ describe("withConfigure", () => {
       expect(body).toMatchObject({
         reason: "signin",
         channel: "iMessage",
-        subjectToken: "photon.signed.subject",
+        messageSenderProof: "photon.signed.sender",
         messageLinePhone: "+14155550123",
         returnMode: "message",
       });
@@ -412,7 +447,7 @@ describe("withConfigure", () => {
         mode: "plain",
         url: "https://sign-in.me/test-agent?delivery=message&message_line_phone=%2B14155550123",
         reason: "signin",
-        fallbackReason: "subject_signature_unsupported",
+        fallbackReason: "sender_proof_unsupported",
       };
     });
     const configureSpectrum = withConfigure({
@@ -427,7 +462,7 @@ describe("withConfigure", () => {
       identity: {
         subjectKey: () => "subject-1",
         externalId: () => "spectrum:subject-1",
-        subjectToken: () => "photon.signed.subject",
+        messageSenderProof: () => "photon.signed.sender",
       },
     });
     const inbound = message({ platform: "iMessage", sender: { id: "+14155551234", address: "+14155551234" } });
@@ -463,7 +498,7 @@ describe("withConfigure", () => {
       expect(body).toMatchObject({
         reason: "signin",
         channel: "iMessage",
-        subjectToken: "photon.signed.subject",
+        messageSenderProof: "photon.signed.sender",
         messageLinePhone: "+14155550999",
         messageBody: "done!",
         returnMode: "message",
@@ -472,7 +507,7 @@ describe("withConfigure", () => {
         mode: "plain",
         url: "https://sign-in.me/test-agent?delivery=message&message_line_phone=%2B14155550999",
         reason: "signin",
-        fallbackReason: "subject_signature_unsupported",
+        fallbackReason: "sender_proof_unsupported",
       };
     });
     const configureSpectrum = withConfigure({
@@ -487,7 +522,7 @@ describe("withConfigure", () => {
       identity: {
         subjectKey: () => "subject-1",
         externalId: () => "spectrum:subject-1",
-        subjectToken: () => "photon.signed.subject",
+        messageSenderProof: () => "photon.signed.sender",
       },
     });
     const ctx = await configureSpectrum.resolve(
@@ -506,7 +541,7 @@ describe("withConfigure", () => {
       expect(body).toMatchObject({
         reason: "signin",
         channel: "iMessage",
-        subjectToken: "photon.signed.subject",
+        messageSenderProof: "photon.signed.sender",
         returnMode: "message",
       });
       expect((body as Record<string, unknown>).messageLinePhone).toBeUndefined();
@@ -515,7 +550,7 @@ describe("withConfigure", () => {
         mode: "plain",
         url: "https://sign-in.me/test-agent",
         reason: "signin",
-        fallbackReason: "subject_signature_unsupported",
+        fallbackReason: "sender_proof_unsupported",
       };
     });
     const configureSpectrum = withConfigure({
@@ -530,7 +565,7 @@ describe("withConfigure", () => {
       identity: {
         subjectKey: () => "subject-1",
         externalId: () => "spectrum:subject-1",
-        subjectToken: () => "photon.signed.subject",
+        messageSenderProof: () => "photon.signed.sender",
       },
     });
     const ctx = await configureSpectrum.resolve(
@@ -612,7 +647,7 @@ describe("withConfigure", () => {
     expect(url.searchParams.get("message_body")).toBe("done!");
   });
 
-  it("uses the message URL API for reconnect in managed mode when signed subject evidence exists", async () => {
+  it("uses the message URL API for reconnect in managed mode when signed message sender proof exists", async () => {
     const store = withConfigure.localStore();
     const fetch = jsonFetch(({ pathname, body }) => {
       if (pathname === "/v1/auth/sign-in/message-lines") {
@@ -632,7 +667,7 @@ describe("withConfigure", () => {
           externalId: "spectrum:subject-1",
           senderId: "slack-user",
         },
-        subjectToken: "photon.signed.subject",
+        messageSenderProof: "photon.signed.sender",
         connectors: ["gmail"],
         messageLinePhone: "+14155550000",
         messageBody: "done!",
@@ -642,7 +677,7 @@ describe("withConfigure", () => {
         mode: "plain",
         url: "https://sign-in.me/test-agent/reconnect?connectors=gmail",
         reason: "reconnect",
-        fallbackReason: "subject_signature_unsupported",
+        fallbackReason: "sender_proof_unsupported",
       };
     });
     const configureSpectrum = withConfigure({
@@ -657,7 +692,7 @@ describe("withConfigure", () => {
       identity: {
         subjectKey: () => "subject-1",
         externalId: () => "spectrum:subject-1",
-        subjectToken: () => "photon.signed.subject",
+        messageSenderProof: () => "photon.signed.sender",
       },
     });
     const inbound = message({ sender: { id: "slack-user" }, platform: "slack" });
@@ -692,7 +727,7 @@ describe("withConfigure", () => {
       identity: {
         subjectKey: () => "subject-1",
         externalId: () => "spectrum:subject-1",
-        subjectToken: () => "photon.signed.subject",
+        messageSenderProof: () => "photon.signed.sender",
       },
     });
     const inbound = message({ sender: { id: "slack-user" }, platform: "slack" });
@@ -832,7 +867,7 @@ describe("withConfigure", () => {
           mode: "plain",
           url: "https://sign-in.me/test-agent",
           reason: "signin",
-          fallbackReason: "subject_signature_missing",
+          fallbackReason: "sender_proof_missing",
         };
       }
       throw new Error(`unexpected request: ${pathname}`);
@@ -881,7 +916,7 @@ describe("withConfigure", () => {
       properties: {
         link_mode: "managed",
         message_url_mode: "plain",
-        fallback_reason: "subject_signature_missing",
+        fallback_reason: "sender_proof_missing",
         return_line_present: true,
       },
     });

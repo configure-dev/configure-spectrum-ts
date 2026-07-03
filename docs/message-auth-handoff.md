@@ -18,7 +18,7 @@ The current adapter already supports the hosted message flow:
 https://sign-in.me/{agent}
 ```
 
-That path is the working fallback today. When Spectrum exposes a reliable iMessage return line, the adapter can add message return metadata to the hosted URL without involving the model. To support cleaner Spectrum handoffs and channel-local subjects, Configure should own a message URL API that can return code-bearing links when Photon provides signed subject evidence.
+That path is the working fallback today. When Spectrum exposes a reliable iMessage return line, the adapter can add message return metadata to the hosted URL without involving the model. To support cleaner Spectrum handoffs and channel-local subjects, Configure should own a message URL API that can return code-bearing links when Photon provides signed message sender proof.
 
 The target code-bearing URL shape is:
 
@@ -26,7 +26,7 @@ The target code-bearing URL shape is:
 https://sign-in.me/{agent}/{code}
 ```
 
-The code is an opaque, short-lived Configure record. It is not a token, not a phone number, and not model-visible state. Configure should generate this code only when it receives and verifies a Photon-signed subject token for the current message subject. Without that signature, the adapter should use the plain `https://sign-in.me/{agent}` fallback and no code-bearing link should be created.
+The code is an opaque, short-lived Configure record. It is not a token, not a phone number, and not model-visible state. Configure should generate this code only when it receives and verifies a Photon-signed message sender proof for the current sender/thread claim. Without that proof, the adapter should use the plain `https://sign-in.me/{agent}` fallback and no code-bearing link should be created.
 
 ## Current State
 
@@ -46,7 +46,7 @@ As of this implementation baseline, the repos expose:
 - `POST /v1/auth/sign-in/recognize-phone`
 - `POST /v1/auth/sign-in/validate`
 
-The message URL endpoint currently implements the conservative preview behavior: it validates the request, audits the attempt, and returns `mode: "plain"` until Photon signature verification is configured. It must not create `sign-in.me/{agent}/{code}` links without verified Photon-signed subject evidence.
+The message URL endpoint currently implements the conservative preview behavior: it validates the request, audits the attempt, and returns `mode: "plain"` until Photon sender proof verification is configured. It must not create `sign-in.me/{agent}/{code}` links without verified Photon-signed message sender proof.
 
 The backend now also has an agent-owned message-line registry. Message URL requests that include a return phone must match an active registry row for the API-key-resolved developer, agent, channel, and phone hash. The registry stores hashes and last4 only; raw return phones are supplied by the server-side agent at request time and must not be stored.
 
@@ -62,8 +62,8 @@ The adapter calls `configure.auth.registerMessageLine()` and `configure.auth.cre
 - Add Configure-owned message-line registry APIs for app/agent return-line binding.
 - Expose server-side SDK helpers for all message auth endpoints that developers should call.
 - Reserve reconnect and permission-review behavior for the same message URL surface.
-- Require verified Photon-signed subject evidence for code-bearing message links.
-- Continue to work without Photon-signed subject evidence by returning or building the plain sign-in fallback.
+- Require verified Photon-signed message sender proof for code-bearing message links.
+- Continue to work without Photon-signed message sender proof by returning or building the plain sign-in fallback.
 - Keep prompt/guidance injection as a nudge only, not as the auth enforcement mechanism.
 - Make the quickstart demonstrate adapter-owned handoff.
 
@@ -111,10 +111,13 @@ const configureSpectrum = withConfigure({
 
 for await (const [space, message] of app.messages) {
   await configureSpectrum.handle(space, message, async (ctx) => {
-    const { profile } = await ctx.profile.read({
-      sections: ["identity", "preferences", "summary"],
+    await runAgent({
+      space,
+      message,
+      linked: ctx.linked,
+      tools: ctx.profile.tools(),
+      executeTool: ctx.profile.executeTool,
     });
-    await runAgent({ space, message, profile, linked: ctx.linked });
   });
 }
 ```
@@ -141,7 +144,7 @@ const configureSpectrum = withConfigure({
 });
 ```
 
-`auto` should use the message URL API as the orchestration path. It prefers a code-bearing message URL only when the backend, SDK, and verified Photon-signed subject evidence are all available; otherwise the endpoint returns the current plain `sign-in.me/{agent}` flow.
+`auto` should use the message URL API as the orchestration path. It prefers a code-bearing message URL only when the backend, SDK, and verified Photon-signed message sender proof are all available; otherwise the endpoint returns the current plain `sign-in.me/{agent}` flow.
 
 ## Control-Plane Flow
 
@@ -149,10 +152,10 @@ For each inbound Spectrum message:
 
 1. Claim the message for idempotency when `store.claimMessage()` is available.
 2. Derive the Configure subject key, thread key, external user id, channel, and phone candidates from Spectrum `space` and `message`.
-3. Extract a Photon signed subject token when Spectrum/provider metadata exposes one.
+3. Extract a Photon-signed message sender proof when Spectrum/provider metadata exposes one.
 4. Load any stored Configure token for the subject.
 5. Validate the stored token according to the configured policy.
-6. If no valid token exists, attempt Configure recognition from phone candidates and, later, signed subject token evidence.
+6. If no valid token exists, attempt Configure recognition from phone candidates and, later, verified message sender proof.
 7. Build a `ctx` object with linked, recognized, approved, profile runtime, and helper methods.
 8. If `ctx.linked` is false and the configured connect policy says to send a link, create the hosted URL, send it, persist delivery state, and stop.
 9. Otherwise call the developer's handler.
@@ -167,7 +170,7 @@ type MessageAuthState =
       status: "approved";
       token: string;
       userId?: string;
-      source: "stored_token" | "phone_recognition" | "signed_subject";
+      source: "stored_token" | "phone_recognition" | "sender_proof";
     }
   | {
       status: "recognized_unapproved";
@@ -211,7 +214,7 @@ Content-Type: application/json
 
 This endpoint requires `requireAgent` and `requireSecretKey`. It should not accept publishable keys.
 
-The endpoint should return a code-bearing URL only after verifying Photon-signed subject evidence. If no valid Photon signature is present, it should return a plain fallback URL and must not insert a message-link code record.
+The endpoint should return a code-bearing URL only after verifying Photon-signed message sender proof. If no valid Photon sender proof is present, it should return a plain fallback URL and must not insert a message-link code record.
 
 ### Request
 
@@ -232,7 +235,7 @@ type CreateMessageSignInUrlRequest = {
     messageId?: string;
   };
 
-  subjectToken?: string;
+  messageSenderProof?: string;
   connectors?: string[];
   displayName?: string;
   agentLogo?: string;
@@ -248,8 +251,8 @@ Notes:
 
 - `subject.key` is the adapter's stable subject key, such as `sp_...`.
 - `subject.externalId` is the developer-scoped fallback external id, such as `spectrum:sp_...`.
-- `subjectToken` is the Photon-signed subject token when Spectrum exposes one. It is server-side only and must not be sent to the model.
-- A code-bearing `mode: "minted"` response requires a present and verified `subjectToken`. If it is absent or invalid, the endpoint should return `mode: "plain"` with `fallbackReason` and no `code`.
+- `messageSenderProof` is the Photon-signed message sender proof when Spectrum exposes one. It is server-side only and must not be sent to the model.
+- A code-bearing `mode: "minted"` response requires a present and verified `messageSenderProof`. If it is absent or invalid, the endpoint should return `mode: "plain"` with `fallbackReason` and no `code`.
 - `messageLinePhone` is allowed only when the phone has been registered to the acting developer, agent, and channel through the message-line registry.
 - `messageBody` is reflected only when `messageLinePhone` is accepted.
 - Do not put raw phone numbers in the code-bearing URL.
@@ -272,9 +275,9 @@ type CreateMessageSignInUrlResponse =
       url: string;
       reason: "signin" | "reconnect" | "permissions";
       fallbackReason:
-        | "subject_signature_missing"
-        | "subject_signature_invalid"
-        | "subject_signature_unsupported";
+        | "sender_proof_missing"
+        | "sender_proof_invalid"
+        | "sender_proof_unsupported";
       idempotencyKey?: string;
     };
 ```
@@ -293,7 +296,7 @@ The plain response URL should be:
 https://sign-in.me/{agent}
 ```
 
-The plain response is not a magic link. It exists so callers can keep one message URL orchestration path while Configure refuses to create a message-bound code without verified Photon subject evidence.
+The plain response is not a magic link. It exists so callers can keep one message URL orchestration path while Configure refuses to create a message-bound code without verified Photon sender proof.
 
 ## Configure Message Line Registry API
 
@@ -376,7 +379,7 @@ create table message_sign_in_links (
   thread_key text,
   space_id text,
   message_id text,
-  subject_token_hash text,
+  message_sender_proof_hash text,
   connectors jsonb,
   display_name text,
   agent_logo text,
@@ -417,7 +420,7 @@ The hosted `sign-in.me/{agent}/{code}` page should:
 2. Validate the code exists, belongs to the agent path, and has not expired.
 3. Restore the existing Configure browser session when present.
 4. If a valid Configure session exists, skip phone OTP.
-5. If no session exists and no verified signed subject token can authenticate the user, fall back to the existing phone verification flow.
+5. If no session exists and no verified signed message sender proof can authenticate the user, fall back to the existing phone verification flow.
 6. Show consent/profile review for the agent.
 7. Apply connector setup when `connectors` is present.
 8. Mint or confirm the agent-scoped token through the existing approval path.
@@ -426,11 +429,11 @@ The hosted `sign-in.me/{agent}/{code}` page should:
 
 The hosted page should not expose the agent token to browser-visible JS except through the existing, intended hosted flow boundaries. It should never expose a Configure secret key.
 
-### Signed Subject Tokens
+### Message Sender Proof
 
-Code-bearing message links require Photon signed subject tokens. The endpoint can ship before Photon signatures are available, but in that state it should return `mode: "plain"` and must not generate a magic-code URL.
+Code-bearing message links require Photon-signed message sender proof. The endpoint can ship before Photon sender proof is available, but in that state it should return `mode: "plain"` and must not generate a magic-code URL.
 
-When available, Configure should verify the subject token server-side and treat it as channel identity evidence. The token should be checked for:
+When available, Configure should verify the message sender proof server-side and treat it as channel identity evidence. The proof should be checked for:
 
 - issuer
 - audience
@@ -440,9 +443,9 @@ When available, Configure should verify the subject token server-side and treat 
 - phone or verified contact claim when present
 - signature against Photon-provided keys
 
-If the signed subject token identifies a federated Configure user that already approved the agent, the hosted page can skip OTP and go directly to consent/success as appropriate.
+If the signed message sender proof identifies a federated Configure user that already approved the agent, the hosted page can skip OTP and go directly to consent/success as appropriate.
 
-If the signed subject token only identifies a channel-local subject, it can bind the code-bearing link to the message subject and help future recognition, but it must not grant cross-agent profile access by itself.
+If the signed message sender proof only identifies a channel-local subject, it can bind the code-bearing link to the message subject and help future recognition, but it must not grant cross-agent profile access by itself.
 
 ## Canonical SDK Contract
 
@@ -482,7 +485,7 @@ const result = await configure.auth.createMessageSignInUrl({
     spaceId: ctx.thread.spaceId,
     messageId: ctx.message.id,
   },
-  subjectToken,
+  messageSenderProof,
   messageLinePhone: "+14155550123",
   messageBody: "Done signing in",
   idempotencyKey,
@@ -539,7 +542,7 @@ export interface CreateMessageSignInUrlOptions {
     spaceId?: string;
     messageId?: string;
   };
-  subjectToken?: string;
+  messageSenderProof?: string;
   connectors?: string[];
   displayName?: string;
   agentLogo?: string;
@@ -558,9 +561,9 @@ export interface CreateMessageSignInUrlResult {
   reason: MessageSignInReason;
   expiresAt?: string;
   fallbackReason?:
-    | "subject_signature_missing"
-    | "subject_signature_invalid"
-    | "subject_signature_unsupported";
+    | "sender_proof_missing"
+    | "sender_proof_invalid"
+    | "sender_proof_unsupported";
   idempotencyKey?: string;
 }
 ```
@@ -601,9 +604,9 @@ type ConfigureSpectrumUrlResult = {
   expiresAt?: string;
   idempotencyKey?: string;
   fallbackReason?:
-    | "subject_signature_missing"
-    | "subject_signature_invalid"
-    | "subject_signature_unsupported";
+    | "sender_proof_missing"
+    | "sender_proof_invalid"
+    | "sender_proof_unsupported";
 };
 ```
 
@@ -625,11 +628,11 @@ Recommended behavior:
 
 - `plain`: current `https://sign-in.me/{agent}` hosted behavior, optionally with validated message return metadata.
 - `managed`: resolve any reliable return line, register it through `configure.auth.registerMessageLine()`, then call `configure.auth.createMessageSignInUrl()` with any completion journey metadata; use `mode: "minted"` responses when verification succeeds and plain fallback otherwise. `auto` remains a compatibility alias until a breaking adapter release.
-- `minted`: private-preview/debug mode that requires the message URL API path. It must still accept `mode: "plain"` fallback responses and must never force a code-bearing URL without verified Photon-signed subject evidence.
+- `minted`: private-preview/debug mode that requires the message URL API path. It must still accept `mode: "plain"` fallback responses and must never force a code-bearing URL without verified Photon-signed message sender proof.
 
 The adapter should call `configure.auth.registerMessageLine()` for return-line registration and `configure.auth.createMessageSignInUrl()` for message URL creation. The minimum supported `configure` version includes both helpers, so adapter code should not carry a direct HTTP bridge.
 
-When registration fails, the adapter should drop `messageLinePhone` and `messageBody` from the message URL request and continue with the hosted fallback. A registration failure should not block the user from receiving a normal sign-in link.
+When registration fails, the adapter should drop `messageLinePhone` and `messageBody` from the message URL request and continue with the hosted fallback. If the managed message URL call itself fails, local fallback links should also omit return-phone metadata. These failures should not block the user from receiving a normal sign-in link.
 
 The adapter should still support a custom provider for private preview testing:
 
@@ -681,13 +684,13 @@ await configure.auth.createMessageSignInUrl({
   reason: "reconnect",
   channel,
   subject,
-  subjectToken,
+  messageSenderProof,
   connectors: ["gmail"],
   idempotencyKey,
 });
 ```
 
-If `subjectToken` is absent or cannot be verified, the response should be `mode: "plain"` and the hosted surface should fall back to normal sign-in/reconnect handling without a magic code.
+If `messageSenderProof` is absent or cannot be verified, the response should be `mode: "plain"` and the hosted surface should fall back to normal sign-in/reconnect handling without a magic code.
 
 Reconnect signals:
 
@@ -738,22 +741,16 @@ The quickstart should continue to:
 
 - use adapter-owned `connect` behavior
 - avoid putting `ctx.signInUrl()` in model/system prompt text
-- include only non-empty `profile.format()` output as pre-read context
+- expose Configure tools in the model loop and route `configure_*` calls through `ctx.profile.executeTool()`
 - use `configure_profile_search` for concrete memories, imported-source questions, and details that need exact source attribution
 - document that the current plain link flow depends on phone-backed sender evidence
 - consume the adapter package instead of hand-rolling message-line registration or URL minting
-- switch to SDK-backed message-line registration once the canonical SDK method exists, while keeping code-bearing links gated on verified Photon signatures
+- switch to SDK-backed message-line registration once the canonical SDK method exists, while keeping code-bearing links gated on verified Photon sender proofs
 
-The model prompt should describe only the agent's behavior and available context:
+The model prompt should describe only the agent's behavior. Configure context should arrive through tools, unless the host app deliberately owns a separate approved context slot:
 
 ```ts
-const { profile } = await ctx.profile.read({
-  sections: ["identity", "preferences", "summary"],
-});
-const profileContext = profile.format({ guidelines: false }).trim();
-const system = profileContext
-  ? `${STYLE}\n\n${profileContext}\n\nUse Configure context selectively. For concrete memories or source-specific questions, call Configure search tools. Do not expose private facts unless they are needed for the user's request.`
-  : `${STYLE}\n\nNo approved Configure profile is available for this sender yet. Do not claim personal context you do not have.`;
+const system = `${STYLE}\n\nUse Configure tools when profile context, memories, connected data, or durable memory writes would help. Do not claim personal context that is not present in the current conversation or tool results.`;
 ```
 
 ## Security Requirements
@@ -795,9 +792,9 @@ Backend:
 - Require active registered message lines before reflecting `messageLinePhone`. **Baseline complete.**
 - Validate request shape, require `sk_`, audit attempts, and return `mode: "plain"` while signature verification is unavailable. **Baseline complete.**
 - Add code hashing, expiry, idempotency, audit events, and rate limits for `mode: "minted"` responses. **Remaining for signed-subject phase.**
-- Add a Photon signature verification boundary. Until Photon key discovery and claim format are configured, the endpoint should always return `mode: "plain"`.
-- Require a verified Photon signature before generating `sign-in.me/{agent}/{code}`.
-- Return `mode: "plain"` and create no code record when the Photon signature is missing, invalid, or unsupported.
+- Add a Photon sender proof verification boundary. Until Photon key discovery and claim format are configured, the endpoint should always return `mode: "plain"`.
+- Require a verified Photon sender proof before generating `sign-in.me/{agent}/{code}`.
+- Return `mode: "plain"` and create no code record when the Photon sender proof is missing, invalid, or unsupported.
 - Add hosted lookup/completion handling for `sign-in.me/{agent}/{code}`.
 - Preserve existing hosted OTP/approval fallback.
 
@@ -820,7 +817,7 @@ Spectrum adapter:
 - Add `signIn.linkMode`. **Baseline complete.**
 - Add optional `signIn.mintUrl` provider for private preview. **Baseline complete.**
 - Route `ctx.signInUrl()` through the provider. **Baseline complete.**
-- Ensure `ctx.signInUrl()` never emits a code-bearing magic link without verified Photon-signed subject evidence. **Baseline complete.**
+- Ensure `ctx.signInUrl()` never emits a code-bearing magic link without verified Photon-signed message sender proof. **Baseline complete.**
 - Add `signInExpiresAt` and `signInIdempotencyKey` store fields. **Baseline complete.**
 - Make `sendOnce` expiry-aware. **Baseline complete.**
 - Register valid return lines before message URL creation. **SDK-backed complete.**
@@ -833,10 +830,10 @@ Quickstart:
 
 ### Phase 3: Signed Subject Extraction And Recognition
 
-- Confirm Photon signed subject token location in Spectrum objects.
+- Confirm Photon-signed message sender proof location in Spectrum objects.
 - Add adapter extraction with safe defaults.
-- Add recognition path from signed subject token.
-- Allow OTP bypass only when token verification and existing Configure session/user binding are sound.
+- Add recognition path from signed message sender proof.
+- Allow OTP bypass only when proof verification and existing Configure session/user binding are sound.
 
 ### Phase 4: Reconnect
 
@@ -862,9 +859,9 @@ Backend tests:
 - Message-line revoke marks the line inactive for the acting developer and agent.
 - Message URL requests reject unregistered `messageLinePhone` before creating a URL.
 - Missing subject key/external id fails validation.
-- Missing Photon signature returns a plain fallback response and creates no message-link row.
-- Invalid Photon signature returns `mode: "plain"` with `fallbackReason: "subject_signature_invalid"` and creates no message-link row.
-- Valid Photon signature is required for a code-bearing `mode: "minted"` response.
+- Missing Photon sender proof returns a plain fallback response and creates no message-link row.
+- Invalid Photon sender proof returns `mode: "plain"` with `fallbackReason: "sender_proof_invalid"` and creates no message-link row.
+- Valid Photon sender proof is required for a code-bearing `mode: "minted"` response.
 - Idempotency returns the same unexpired code-bearing link.
 - Expired idempotent code-bearing link is replaced.
 - Plain fallback responses do not create code rows or block a later signed request with the same idempotency key.
@@ -908,10 +905,10 @@ Quickstart tests:
 - Existing Spectrum apps can add Configure with one adapter.
 - The quickstart demonstrates adapter-owned sign-in delivery.
 - The model is not given a sign-in URL in its system prompt.
-- Plain message sign-in works without Photon signed-token support.
+- Plain message sign-in works without Photon-signed message sender proof support.
 - Return-phone metadata is reflected only for registered agent-owned message lines.
 - Developers can register/list/revoke message lines through the canonical SDK, not by copying raw HTTP.
-- Magic-code links are never generated without verified Photon-signed subject evidence.
+- Magic-code links are never generated without verified Photon-signed message sender proof.
 - Code-bearing message URLs can be introduced without changing the developer's handler.
 - Reconnect has a reserved message URL shape.
 - Guidance injection is documented as a nudge, not the auth mechanism.
@@ -926,8 +923,8 @@ Before implementation starts, confirm:
 - Message link TTL.
 - Rate-limit bucket and audit event names.
 - Whether initial reconnect falls back to normal sign-in UI or gets dedicated hosted copy.
-- Final Photon signature contract: issuer, audience, key discovery, claim names, and accepted channels.
-- Where Spectrum exposes signed subject tokens once Photon ships them.
+- Final Photon sender proof contract: issuer, audience, key discovery, claim names, and accepted channels.
+- Where Spectrum exposes signed message sender proofs once Photon ships them.
 - Whether quickstart should stay on the vendored tarball until preview publish, or consume a local packed tarball from the adapter repo.
 - Whether the TypeScript SDK message-line methods ship before or with the next Spectrum tarball.
 - Whether Python SDK parity is required for the same public release or can be explicitly deferred.

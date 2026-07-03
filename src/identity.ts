@@ -8,7 +8,7 @@ export interface DerivedIdentity {
   externalId: string;
   phoneCandidates: string[];
   senderId?: string;
-  subjectToken?: string;
+  messageSenderProof?: string;
 }
 
 export async function deriveIdentity(input: ConfigureSpectrumIdentityInput): Promise<DerivedIdentity> {
@@ -20,14 +20,14 @@ export async function deriveIdentity(input: ConfigureSpectrumIdentityInput): Pro
     : `sender:${input.message.platform}:${senderId || input.space.id}`;
   const subjectKey = `sp_${hash(material)}`;
   const threadKey = `${input.message.platform}:${input.space.id}`;
-  const subjectToken = defaultSubjectToken(input.space, input.message);
+  const messageSenderProof = defaultMessageSenderProof(input.space, input.message);
   return {
     subjectKey,
     threadKey,
     externalId: `spectrum:${subjectKey}`,
     phoneCandidates,
     ...(senderId ? { senderId } : {}),
-    ...(subjectToken ? { subjectToken } : {}),
+    ...(messageSenderProof ? { messageSenderProof } : {}),
   };
 }
 
@@ -118,14 +118,14 @@ function stringField(value: unknown, field: string): string | undefined {
   return typeof candidate === "string" && candidate.trim() ? candidate.trim() : undefined;
 }
 
-function defaultSubjectToken(space: Space, message: Message): string | undefined {
+function defaultMessageSenderProof(space: Space, message: Message): string | undefined {
   return firstToken(
-    tokenField(message, "subjectToken"),
-    tokenField(message, "subject_token"),
-    tokenField(message, "signedSubjectToken"),
-    tokenField(message, "signed_subject_token"),
-    tokenField(message, "photonSubjectToken"),
-    tokenField(message, "photon_subject_token"),
+    tokenField(message, "messageSenderProof"),
+    tokenField(message, "message_sender_proof"),
+    tokenField(message, "signedMessageSenderProof"),
+    tokenField(message, "signed_message_sender_proof"),
+    tokenField(message, "photonMessageSenderProof"),
+    tokenField(message, "photon_message_sender_proof"),
     nestedToken(message, "metadata"),
     nestedToken(message, "providerMetadata"),
     nestedToken(message, "provider_metadata"),
@@ -144,12 +144,12 @@ function nestedToken(value: unknown, field: string): string | undefined {
 function defaultTokenFromObject(value: unknown): string | undefined {
   if (!value || typeof value !== "object") return undefined;
   return firstToken(
-    tokenField(value, "subjectToken"),
-    tokenField(value, "subject_token"),
-    tokenField(value, "signedSubjectToken"),
-    tokenField(value, "signed_subject_token"),
-    tokenField(value, "photonSubjectToken"),
-    tokenField(value, "photon_subject_token")
+    tokenField(value, "messageSenderProof"),
+    tokenField(value, "message_sender_proof"),
+    tokenField(value, "signedMessageSenderProof"),
+    tokenField(value, "signed_message_sender_proof"),
+    tokenField(value, "photonMessageSenderProof"),
+    tokenField(value, "photon_message_sender_proof")
   );
 }
 

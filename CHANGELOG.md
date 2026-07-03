@@ -2,7 +2,27 @@
 
 ## Unreleased
 
-- Updates README and examples to show `ctx.profile.tools({ connectors, actions })` plus `ctx.profile.executeTool()` as the normal model-loop integration, with formatted profile context kept as optional first-turn orientation.
+## 0.1.0-preview.6 - 2026-07-03
+
+- Removes local tarball install guidance from the public README so npm install remains the canonical path.
+- Updates README, RFC, and examples to teach the read-backed commit contract: call `ctx.profile.commit()` with bounded evidence after successful `configure_profile_read` / `configure_profile_search`, not unconditionally after every reply.
+
+## 0.1.0-preview.5 - 2026-07-03
+
+- Exports the public `ConfigureSpectrumEvent*` types from the package root so production integrations can type their redacted `onEvent` telemetry bridge without reaching into package internals.
+
+## 0.1.0-preview.4 - 2026-07-03
+
+- Omits return-phone metadata from local fallback links when `linkMode: "managed"` message URL creation is unavailable, preserving Configure-managed message-line binding as the only managed return-metadata path.
+- Keeps `linkMode: "plain"` compatibility behavior for apps that intentionally build static hosted links.
+- Bumps the minimum Configure SDK dependency to `configure@^1.1.16`.
+
+## 0.1.0-preview.3 - 2026-07-03
+
+- Updates README and examples to keep `ctx.profile.tools({ connectors, actions })` plus `ctx.profile.executeTool()` as the normal model-loop integration when the hosted/product surface supports those capabilities, with execution still gated by Configure/user state and host-side formatted profile context kept out of the default loop.
+- Documents hosted recovery links as the application-owned response for missing connector/action state.
+- Keeps message-line return metadata on the Configure-managed path without exposing raw phone values to models or logs.
+- Bumps the minimum Configure SDK dependency to `configure@^1.1.15` so sender-proof fallback reasons match the current message URL API.
 
 ## 0.1.0-preview.2
 

@@ -14,9 +14,9 @@ export type ConfigureSpectrumLinkMode = "plain" | "managed" | "auto" | "minted";
 export type ConfigureSpectrumMessageUrlReason = "signin" | "reconnect" | "permissions";
 export type ConfigureSpectrumMessageUrlMode = "minted" | "plain";
 export type ConfigureSpectrumMessageUrlFallbackReason =
-  | "subject_signature_missing"
-  | "subject_signature_invalid"
-  | "subject_signature_unsupported";
+  | "sender_proof_missing"
+  | "sender_proof_invalid"
+  | "sender_proof_unsupported";
 export type ConfigureSpectrumTokenValidation = "never" | "always" | "on-first-use";
 export type ConfigureSpectrumSignInMessage =
   | string
@@ -92,7 +92,7 @@ export interface ConfigureSpectrumIdentityOptions {
   subjectKey?: (input: ConfigureSpectrumIdentityInput) => string | Promise<string>;
   threadKey?: (input: ConfigureSpectrumIdentityInput) => string | Promise<string>;
   phoneCandidates?: (input: ConfigureSpectrumIdentityInput) => string[] | Promise<string[]>;
-  subjectToken?: (input: ConfigureSpectrumIdentityInput) => string | undefined | Promise<string | undefined>;
+  messageSenderProof?: (input: ConfigureSpectrumIdentityInput) => string | undefined | Promise<string | undefined>;
   externalId?: (input: ConfigureSpectrumIdentityInput & { subjectKey: string }) => string | Promise<string>;
   validateStoredToken?: ConfigureSpectrumTokenValidation;
 }
@@ -173,7 +173,7 @@ export interface ConfigureSpectrumThreadContext {
 export interface ConfigureSpectrumMessageUrlRequest {
   reason: ConfigureSpectrumMessageUrlReason;
   ctx: ConfigureSpectrumContext;
-  subjectToken?: string;
+  messageSenderProof?: string;
   connectorIds?: string[];
   idempotencyKey: string;
 }
