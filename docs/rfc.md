@@ -17,13 +17,11 @@ const configureSpectrum = withConfigure({
 });
 
 await configureSpectrum.handle(space, message, async (ctx) => {
-  const { profile } = await ctx.profile.read({
-    sections: ["identity", "preferences", "summary"],
-  });
-  const profileOverview = profile.format({ guidelines: false, maxChars: 6_000 });
+  const { profile } = await ctx.profile.read();
+  const profileContext = profile.format({ guidelines: false });
   await runAgent({
     message,
-    profileOverview,
+    profileContext,
     tools: ctx.profile.tools(),
     executeTool: ctx.profile.executeTool,
   });
