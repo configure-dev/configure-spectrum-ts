@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Updates README and examples to show `ctx.profile.tools({ connectors, actions })` plus `ctx.profile.executeTool()` as the normal model-loop integration, with formatted profile context kept as optional first-turn orientation.
+
 ## 0.1.0-preview.2
 
 - Adds `signIn.linkMode: "managed"` as the public name for Configure-managed message sign-in and reconnect URL orchestration.
