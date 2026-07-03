@@ -28,7 +28,7 @@ Local package testing can use a packed tarball:
 
 ```bash
 npm pack
-npm install ./configure-spectrum-0.1.0-preview.1.tgz
+npm install ./configure-spectrum-0.1.0-preview.2.tgz
 ```
 
 ## Existing Handler
