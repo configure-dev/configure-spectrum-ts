@@ -17,10 +17,20 @@ const configureSpectrum = withConfigure({
 });
 
 await configureSpectrum.handle(space, message, async (ctx) => {
-  const { profile } = await ctx.profile.read();
-  await runAgent({ message, profile });
+  const { profile } = await ctx.profile.read({
+    sections: ["identity", "preferences", "summary"],
+  });
+  const profileOverview = profile.format({ guidelines: false, maxChars: 6_000 });
+  await runAgent({
+    message,
+    profileOverview,
+    tools: ctx.profile.tools(),
+    executeTool: ctx.profile.executeTool,
+  });
 });
 ```
+
+The formatted profile overview is an orientation packet, not the full record. Model handlers should use `configure_profile_search` through `ctx.profile.executeTool()` when a turn needs a concrete memory, an imported-source view, or source attribution.
 
 ## Non-Goals
 

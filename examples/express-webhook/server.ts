@@ -27,14 +27,17 @@ server.use(
     onMessage: async (space, message) => {
       await configureSpectrum.handle(space, message, async (ctx) => {
         if (!ctx.text) return;
-        const { profile } = await ctx.profile.read();
+        const { profile } = await ctx.profile.read({
+          sections: ["identity", "preferences", "summary"],
+        });
+        const profileOverview = profile.format({ guidelines: false, maxChars: 6_000 }).trim();
         const name = firstName(profile);
         const greeting = name ? `Hey ${name}.` : "Hey.";
         const state = ctx.linked
-          ? "I have your Configure profile for this conversation."
+          ? "I have a compact Configure profile overview for this conversation."
           : "I can continue without a linked profile. Send \"connect\" to link Configure.";
 
-        await message.reply(`${greeting} ${state}`);
+        await message.reply(`${greeting} ${state}${profileOverview ? " I can search your Configure memories if you ask about something specific." : ""}`);
       });
     },
   })
