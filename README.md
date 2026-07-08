@@ -67,12 +67,21 @@ for await (const [space, message] of app.messages) {
     });
 
     await message.reply(reply);
-    if (configureReadUsed) ctx.profile.commit({
-      messages: [
-        { role: "user", content: ctx.text },
-        { role: "assistant", content: reply },
-      ],
-    }).catch(() => {});
+    if (configureReadUsed) {
+      try {
+        await ctx.profile.commit({
+          messages: [
+            { role: "user", content: ctx.text },
+            { role: "assistant", content: reply },
+          ],
+        });
+      } catch (error) {
+        console.warn("[configure]", {
+          event: "profile_commit_failed",
+          errorKind: error instanceof Error ? error.name : "unknown",
+        });
+      }
+    }
   });
 }
 
@@ -91,16 +100,32 @@ When `connect` sends a hosted link, `handle()` returns before the handler runs. 
 
 Hosted links use Configure's public `sign-in.me/{agent}` surface, so the model never needs to construct Configure URLs. If your app passes `signIn.agentPhone`, that explicit app-bound line is used first. Otherwise, for Spectrum iMessage dedicated-line spaces, the adapter reads Spectrum's routed line from `space.phone` and uses it when it is a valid E.164 phone number. Shared-mode sentinels such as `shared`, blank local-mode values, and other non-phone values are ignored, so Configure falls back to the normal hosted completion path instead of receiving an unreliable return phone.
 
-If Photon exposes the agent's current return line through an API instead of `space.phone`, pass an async resolver:
+In normal iMessage turns, you should not need a resolver: `space.phone` is the per-turn routed line and the adapter already uses it. `signIn.agentPhone` is for an explicit application binding or a carefully chosen fallback when your app can determine the line outside the current turn.
+
+Photon Cloud's iMessage token endpoint, exposed by Spectrum as `cloud.issueImessageTokens(projectId, projectSecret)`, returns the active dedicated line pool plus short-lived provider tokens. It is useful for non-turn validation or single-line fallback, but it is not per-thread authority by itself. Discard tokens immediately, do not log the response, and only choose a line when there is exactly one active line or your app has a deterministic selection rule.
 
 ```ts
+import { cloud } from "spectrum-ts";
+
+const e164 = (value: unknown) =>
+  typeof value === "string" && /^\+[1-9]\d{7,14}$/.test(value) ? value : undefined;
+
+const configuredLine = async () => {
+  const tokenData = await cloud.issueImessageTokens(projectId, projectSecret);
+  if (tokenData.type !== "dedicated") return undefined;
+  const lines = Object.values(tokenData.numbers)
+    .map(e164)
+    .filter((line): line is string => Boolean(line));
+  return lines.length === 1 ? lines[0] : undefined;
+};
+
 const configureSpectrum = withConfigure({
   apiKey,
   publishableKey,
   agent: "your-agent",
   store,
   signIn: {
-    agentPhone: async (ctx) => photon.lines.currentPhone({ spaceId: ctx.space.id }),
+    agentPhone: async (ctx) => e164(ctx.space.phone) ?? configuredLine(),
   },
 });
 ```
@@ -141,8 +166,6 @@ const store = withConfigure.localStore();
 ```
 
 `withConfigure.localStore()` keeps adapter state in the current process. It resets when the worker restarts.
-
-For the design rationale and message URL/reconnect implementation plan, see [Message Auth Handoff Spec](docs/message-auth-handoff.md).
 
 ## How Resolution Works
 
@@ -201,7 +224,7 @@ Developers should not need to know Configure hosted URL parameters to return a u
 
 For iMessage dedicated-line spaces, Spectrum includes the routed sending line on `space.phone`. When no explicit `signIn.agentPhone` is configured and that value is a valid E.164 phone number, the adapter passes it to Configure for sign-in and reconnect links. In shared iMessage mode, local mode, or channels without a reliable message return target, the adapter omits the return phone and keeps the hosted Configure completion fallback.
 
-`signIn.agentPhone` is the explicit app-bound return line. It can be a string or an async resolver that calls Photon for the current line. The resolved value is validated as E.164; values such as `shared` are ignored rather than sent to Configure.
+`signIn.agentPhone` is the explicit app-bound return line. It can be a string or an async resolver. Prefer the current turn's `space.phone` when available. If you call Photon Cloud's token endpoint through `cloud.issueImessageTokens()`, treat it as an active line-pool lookup, not proof of a specific turn's routed line, and choose only a deterministic valid E.164 number. Values such as `shared` are ignored rather than sent to Configure.
 
 In `linkMode: "managed"`, valid return lines are registered through Configure before the adapter asks for a message URL. If registration or message URL creation fails, the adapter omits return-phone metadata from its local fallback and keeps the hosted sign-in path usable.
 

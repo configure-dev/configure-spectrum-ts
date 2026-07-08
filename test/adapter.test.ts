@@ -424,6 +424,45 @@ describe("withConfigure", () => {
     expect(store.savedJourneys).toBe(1);
   });
 
+  it("passes return metadata and journey ids to custom message URL providers", async () => {
+    const store = countingStore(withConfigure.localStore());
+    const mintUrl = vi.fn(async (request) => {
+      expect(request.returnTarget).toMatchObject({
+        messageLinePhone: "+14155550123",
+        messageBody: "done!",
+      });
+      expect(typeof request.journeyId).toBe("string");
+      return {
+        mode: "plain" as const,
+        url: "https://sign-in.me/test-agent?from=provider",
+        fallbackReason: "sender_proof_missing" as const,
+        idempotencyKey: request.idempotencyKey,
+      };
+    });
+    const configureSpectrum = withConfigure({
+      ...baseOptions,
+      store,
+      signIn: {
+        linkMode: "managed",
+        mintUrl,
+        messageCompleteUrl: "https://agent.example.com/auth/configure/complete",
+        messageBody: "done!",
+      },
+      identity: {
+        subjectKey: () => "subject-1",
+        externalId: () => "spectrum:subject-1",
+      },
+    });
+    const ctx = await configureSpectrum.resolve(
+      space({ __platform: "iMessage", phone: "+14155550123", type: "dm" }),
+      message({ platform: "iMessage", sender: { id: "+14155551234", address: "+14155551234" } })
+    );
+
+    await expect(ctx.signInUrl()).resolves.toBe("https://sign-in.me/test-agent?from=provider");
+    expect(mintUrl).toHaveBeenCalledTimes(1);
+    expect(store.savedJourneys).toBe(1);
+  });
+
   it("uses the routed iMessage line for first-message sign-in return metadata", async () => {
     const store = withConfigure.localStore();
     const fetch = jsonFetch(({ pathname, body }) => {
