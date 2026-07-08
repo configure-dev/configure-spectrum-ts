@@ -170,12 +170,19 @@ export interface ConfigureSpectrumThreadContext {
   messageId?: string;
 }
 
+export interface ConfigureSpectrumMessageReturnTarget {
+  messageLinePhone?: string;
+  messageBody?: string;
+}
+
 export interface ConfigureSpectrumMessageUrlRequest {
   reason: ConfigureSpectrumMessageUrlReason;
   ctx: ConfigureSpectrumContext;
   messageSenderProof?: string;
   connectorIds?: string[];
   idempotencyKey: string;
+  returnTarget?: ConfigureSpectrumMessageReturnTarget;
+  journeyId?: string;
 }
 
 export type ConfigureSpectrumMessageUrlResult =

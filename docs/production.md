@@ -22,7 +22,9 @@ Use Spectrum's webhook adapters for raw body handling and signature verification
 
 For Spectrum iMessage dedicated-line spaces, the adapter uses an explicit `signIn.agentPhone` first, then falls back to Spectrum's routed `space.phone` value when it is a valid E.164 phone number. That lets Configure return the user through the same message line without app code building hosted URL parameters.
 
-If Photon exposes the current sending line through an API, pass `signIn.agentPhone` as a sync or async resolver. The adapter calls it when building sign-in and reconnect links, validates the result as E.164, and omits invalid values.
+For live iMessage turns, prefer Spectrum's routed `space.phone`; the adapter already does this when no explicit `signIn.agentPhone` is configured. If you need a non-turn fallback or validation source, Photon Cloud's iMessage token endpoint is exposed by Spectrum as `cloud.issueImessageTokens(projectId, projectSecret)`. That response contains the active dedicated line pool and short-lived provider tokens. Treat it as line-pool metadata, not proof of a specific thread's routed line: discard tokens immediately, never log the response, and choose a phone only when there is one active line or your app has a deterministic selection rule.
+
+If you do pass `signIn.agentPhone` as a sync or async resolver, the adapter calls it when building sign-in and reconnect links, validates the result as E.164, and omits invalid values.
 
 In `linkMode: "managed"`, the adapter registers valid return lines with Configure before requesting a message URL. If registration or message URL creation fails, it drops return-phone metadata from the local fallback and keeps the hosted sign-in fallback usable.
 
