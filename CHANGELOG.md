@@ -2,10 +2,12 @@
 
 ## Unreleased
 
+- Clarifies that Spectrum `space.phone` is the preferred turn-level iMessage return line, while Photon Cloud `issueImessageTokens()` is an active line-pool lookup for non-turn fallback or validation, not per-thread authority.
+
 ## 0.1.0-preview.6 - 2026-07-03
 
 - Removes local tarball install guidance from the public README so npm install remains the canonical path.
-- Updates README, RFC, and examples to teach the read-backed commit contract: call `ctx.profile.commit()` with bounded evidence after successful `configure_profile_read` / `configure_profile_search`, not unconditionally after every reply.
+- Updates README and examples to teach the read-backed commit contract: call `ctx.profile.commit()` with bounded evidence after successful `configure_profile_read` / `configure_profile_search`, not unconditionally after every reply.
 
 ## 0.1.0-preview.5 - 2026-07-03
 
