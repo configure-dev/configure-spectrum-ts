@@ -22,6 +22,19 @@ Claude Code learns about you today, Codex knows tomorrow. To seed a new agent
 instantly, say: "save everything you know about me to my Configure profile"
 before you switch.
 
+## Connector setup blurb (for the import / connect flow — later stage)
+
+ChatGPT and Claude both add Configure as a plain MCP connector: paste
+`https://mcp.configure.dev` and sign in. The import-completion and connect
+pages should offer a copy-paste prompt the user can hand to their assistant:
+
+> Add the Configure connector: it's a remote MCP server at
+> https://mcp.configure.dev (OAuth sign-in, no API key). Once connected,
+> you'll have my portable memory profile — read it at the start of our chats,
+> and save durable things you learn about me to it.
+
+One paste teaches the assistant both the setup steps and the doctrine.
+
 ## llms.txt section (append to configure.dev/llms.txt)
 
 # Configure for coding agents
