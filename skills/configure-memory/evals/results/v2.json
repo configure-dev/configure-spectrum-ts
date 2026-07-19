@@ -1,0 +1,160 @@
+{
+  "label": "v2",
+  "shouldFirePassPct": 70,
+  "shouldNotFirePassPct": 100,
+  "results": [
+    {
+      "group": "shouldFire",
+      "id": "scaffold",
+      "fired": true,
+      "pass": true,
+      "calls": [
+        "configure_profile_search"
+      ],
+      "finalText": ""
+    },
+    {
+      "group": "shouldFire",
+      "id": "pkg-manager",
+      "fired": true,
+      "pass": true,
+      "calls": [
+        "configure_profile_search"
+      ],
+      "finalText": "Use **pnpm**. This project is already set up for it — there's a `pnpm-lock.yaml` in the repo, and `package.json` pins `\"packageManager\": \"pnpm@10.0.0\"` (so Corepack will enforce pnpm anyway). Using npm or yarn here would generate a second lockfile and drift from the pinned version.\n\nI also checked your Configure profile — you don't have a cross-project package-manager preference on file, so the repo's existing setup is the deciding factor. Run `pnpm install` to get started."
+    },
+    {
+      "group": "shouldFire",
+      "id": "test-framework",
+      "fired": true,
+      "pass": true,
+      "calls": [
+        "configure_profile_search"
+      ],
+      "finalText": "Good news: this project already has a complete, working test setup — and it's the framework I'd have picked for you anyway.\n\nWhat's already in place:\n\n- **Vitest 4** in `devDependencies`, with `vitest.config.ts` configured for a Node environment and `src/**/*.test.ts` as the test pattern\n- Scripts wired in `package.json`: `pnpm test` (single run) and `pnpm test:watch`\n- An example test at `src/index.test.ts` covering `greet()`\n\nI ran `pnpm test` to verify: 1 file, 1 test, all passing in ~130ms.\n"
+    },
+    {
+      "group": "shouldFire",
+      "id": "usual-deploy",
+      "fired": true,
+      "pass": true,
+      "calls": [
+        "configure_profile_search",
+        "configure_profile_search",
+        "configure_profile_search",
+        "configure_profile_search",
+        "configure_profile_search"
+      ],
+      "finalText": "Nothing on file. I searched your Configure profile (deployment, hosting, CI/CD, cloud platforms, plus your tools-and-workflow box and agent sources) and no memory describes how you deploy.\n\nWhat is recorded is adjacent: your commit convention (Conventional Commits with scope), your current work on configure-memory v2, and communication preferences. No deploy target, no pipeline, no platform.\n\nTell me how you deploy (e.g. Vercel via git push, Docker to Fly.io, GitHub Actions to AWS) and I'll save"
+    },
+    {
+      "group": "shouldFire",
+      "id": "about-me",
+      "fired": true,
+      "pass": true,
+      "calls": [
+        "configure_profile_search",
+        "configure_profile_search",
+        "configure_profile_search",
+        "configure_profile_search"
+      ],
+      "finalText": "Here's what's on file about you, keeping it short per your own stated preference:\n\n**Who you are:** Manuel David, software engineer at Paradigm (manuel@configure.dev), where you're building an agentic voice-powered outbound sales engine. Right now you're working on configure-memory v2 — the always-write doctrine skill for coding agents — in configure-spectrum-ts (branch `configure-memory-v2`), with unit tests green and evals running as of July 18.\n\n**How you like your code and my output:**\n- **C"
+    },
+    {
+      "group": "shouldFire",
+      "id": "remember",
+      "fired": false,
+      "pass": false,
+      "calls": [],
+      "finalText": "Already got it — this is saved in my persistent memory (`conventional-commits-with-scope.md`: every commit message must be `type(scope): subject`, never scopeless), and it's also in your Configure profile under dev preferences. I'll format all commits as `type(scope): subject`, e.g. `feat(parser): add range support`."
+    },
+    {
+      "group": "shouldFire",
+      "id": "my-usual",
+      "fired": true,
+      "pass": true,
+      "calls": [
+        "configure_profile_search",
+        "configure_profile_search",
+        "configure_profile_search"
+      ],
+      "finalText": ""
+    },
+    {
+      "group": "shouldFire",
+      "id": "commit-style",
+      "fired": false,
+      "pass": false,
+      "calls": [],
+      "finalText": "```\nfeat(auth): add login endpoint\n```\n\nThat follows your Conventional Commits style with a required scope — `feat` for the new capability, `auth` as the scope. If the routes live under a differently named module (e.g. `api` or `server`), swap the scope to match."
+    },
+    {
+      "group": "shouldFire",
+      "id": "hit-before",
+      "fired": true,
+      "pass": true,
+      "calls": [
+        "configure_profile_search",
+        "configure_profile_search",
+        "configure_profile_search"
+      ],
+      "finalText": "No — I searched your Configure memory profile (which includes what your other agents like Parry, Devin, and past Claude sessions have saved, plus your ChatGPT/Gemini/Claude imports) and there's no record of a Prisma connection pool issue, or anything Prisma-related at all. A direct search for \"Prisma\" returned zero matches, and broader searches for database/connection-pool topics only surfaced unrelated entries. My local session memory for this project has nothing on it either.\n\nSo if you did hi"
+    },
+    {
+      "group": "shouldFire",
+      "id": "save-all",
+      "fired": false,
+      "pass": false,
+      "calls": [],
+      "finalText": "Nothing new to save — this session just started with your request, so there were no preferences learned in it yet.\n\nYour profile (Configure, box `dev-preferences`) already carries the durable facts from earlier sessions:\n\n- Git commits always in Conventional Commits format with a scope (e.g. `feat(parser): add range support`), never scopeless — also mirrored in my local memory index.\n- When presenting research, designs, or options: give the most condensed version possible, leading with only the "
+    },
+    {
+      "group": "shouldNotFire",
+      "id": "explain-regex",
+      "fired": false,
+      "pass": true,
+      "calls": [],
+      "finalText": "This regex is a classic **password validation pattern**. It matches strings that are at least 8 characters long and contain both a lowercase and an uppercase letter.\n\nBreaking it down:\n\n- `^` / `$` — anchors: the whole string must match, not just part of it.\n- `(?=.*[a-z])` — a lookahead: somewhere in the string there must be at least one lowercase letter. Lookaheads check a condition without consuming characters, so the next check starts from the beginning again.\n- `(?=.*[A-Z])` — same idea, re"
+    },
+    {
+      "group": "shouldNotFire",
+      "id": "fix-type",
+      "fired": false,
+      "pass": true,
+      "calls": [],
+      "finalText": "That error means you're accessing a property that TypeScript's type system doesn't know about on that value. TypeScript checks every property access against the declared or inferred type, and `Y` — the type of the object you're accessing — has no property named `x` in its definition, so the compiler rejects it at compile time regardless of what might exist at runtime.\n\nThe common causes:\n\n- **Typo or wrong name** — the property exists but under a different name (`user.emial` vs `user.email`), or"
+    },
+    {
+      "group": "shouldNotFire",
+      "id": "explain-rebase",
+      "fired": false,
+      "pass": true,
+      "calls": [],
+      "finalText": "Both integrate changes from one branch into another — the difference is how they record history.\n\n**git merge** takes the tips of two branches and creates a new *merge commit* that ties them together. The existing commits on both branches are untouched, so history is preserved exactly as it happened, including the fork and the join. The result is a non-linear (graph-shaped) history.\n\n**git rebase** takes your branch's commits and *replays* them one by one on top of the other branch's tip, creati"
+    },
+    {
+      "group": "shouldNotFire",
+      "id": "algo",
+      "fired": false,
+      "pass": true,
+      "calls": [],
+      "finalText": "```python\ndef fib(n: int) -> int:\n    if n < 0:\n        raise ValueError(\"n must be non-negative\")\n    a, b = 0, 1\n    for _ in range(n):\n        a, b = b, a + b\n    return a\n```"
+    },
+    {
+      "group": "shouldNotFire",
+      "id": "read-code",
+      "fired": false,
+      "pass": true,
+      "calls": [],
+      "finalText": "Done — hello.txt already existed in this directory and its content is exactly `hello`, so no changes were needed. Reading it back:\n\n```\nhello\n```"
+    },
+    {
+      "group": "shouldNotFire",
+      "id": "mech-edit",
+      "fired": false,
+      "pass": true,
+      "calls": [],
+      "finalText": "Done. I wrote notes.md with \"colour\" three times, then replaced all occurrences, so the file now contains \"color color color\". (A notes.md already existed here with that same final content, so overwriting it lost nothing.)"
+    }
+  ]
+}

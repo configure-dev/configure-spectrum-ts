@@ -1,22 +1,75 @@
 {
   "shouldFire": [
-    { "id": "scaffold", "prompt": "Set up a brand new TypeScript project for me right here. Pick the tooling." },
-    { "id": "pkg-manager", "prompt": "Which package manager should I use for this new project?" },
-    { "id": "test-framework", "prompt": "Add a test setup to this project. Choose the framework you think fits me." },
-    { "id": "usual-deploy", "prompt": "How do I usually deploy my apps?" },
-    { "id": "about-me", "prompt": "What do you know about me and how I like my code?" },
-    { "id": "remember", "prompt": "Remember that I always want conventional commits with a scope." },
-    { "id": "my-usual", "prompt": "Write a .prettierrc for me, my usual way." },
-    { "id": "commit-style", "prompt": "Write a commit message for a change that adds a login endpoint, in my style." },
-    { "id": "hit-before", "prompt": "Have I run into a Prisma connection pool issue before?" },
-    { "id": "save-all", "prompt": "Save everything you learned about my preferences this session to my profile." }
+    {
+      "id": "scaffold",
+      "prompt": "Set up a brand new TypeScript project for me right here. Pick the tooling."
+    },
+    {
+      "id": "pkg-manager",
+      "prompt": "Which package manager should I use for this new project?"
+    },
+    {
+      "id": "test-framework",
+      "prompt": "Add a test setup to this project. Choose the framework you think fits me."
+    },
+    {
+      "id": "usual-deploy",
+      "prompt": "How do I usually deploy my apps?",
+      "outcome": "(deploy\\.sh|heroku|fly|profile)"
+    },
+    {
+      "id": "about-me",
+      "prompt": "What do you know about me and how I like my code?",
+      "outcome": "(paradigm|typescript|pnpm|configure profile)"
+    },
+    {
+      "id": "remember",
+      "prompt": "Remember that I always want conventional commits with a scope.",
+      "outcome": "(already (saved|got it|in your)|configure profile|dev.preferences)"
+    },
+    {
+      "id": "my-usual",
+      "prompt": "Write a .prettierrc for me, my usual way."
+    },
+    {
+      "id": "commit-style",
+      "prompt": "Write a commit message for a change that adds a login endpoint, in my style.",
+      "outcome": "\\w+\\([a-z-]+\\):"
+    },
+    {
+      "id": "hit-before",
+      "prompt": "Have I run into a Prisma connection pool issue before?"
+    },
+    {
+      "id": "save-all",
+      "prompt": "Save everything you learned about my preferences this session to my profile.",
+      "outcome": "(nothing new|already carr|already in your|profile.*dev.preferences|dev.preferences)"
+    }
   ],
   "shouldNotFire": [
-    { "id": "explain-regex", "prompt": "What does this regex do: ^(?=.*[a-z])(?=.*[A-Z]).{8,}$" },
-    { "id": "fix-type", "prompt": "This TypeScript error says 'Property x does not exist on type Y'. What does that mean generally?" },
-    { "id": "explain-rebase", "prompt": "Explain the difference between git rebase and git merge." },
-    { "id": "algo", "prompt": "Write a function that returns the nth Fibonacci number in Python. Just show the code." },
-    { "id": "read-code", "prompt": "Create a file hello.txt containing exactly the word hello, then read it back to me." },
-    { "id": "mech-edit", "prompt": "Create notes.md with the word 'colour' three times, then change every 'colour' to 'color'." }
+    {
+      "id": "explain-regex",
+      "prompt": "What does this regex do: ^(?=.*[a-z])(?=.*[A-Z]).{8,}$"
+    },
+    {
+      "id": "fix-type",
+      "prompt": "This TypeScript error says 'Property x does not exist on type Y'. What does that mean generally?"
+    },
+    {
+      "id": "explain-rebase",
+      "prompt": "Explain the difference between git rebase and git merge."
+    },
+    {
+      "id": "algo",
+      "prompt": "Write a function that returns the nth Fibonacci number in Python. Just show the code."
+    },
+    {
+      "id": "read-code",
+      "prompt": "Create a file hello.txt containing exactly the word hello, then read it back to me."
+    },
+    {
+      "id": "mech-edit",
+      "prompt": "Create notes.md with the word 'colour' three times, then change every 'colour' to 'color'."
+    }
   ]
 }

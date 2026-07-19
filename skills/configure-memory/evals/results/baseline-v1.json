@@ -1,0 +1,152 @@
+{
+  "label": "baseline-v1",
+  "shouldFirePassPct": 70,
+  "shouldNotFirePassPct": 100,
+  "results": [
+    {
+      "group": "shouldFire",
+      "id": "scaffold",
+      "fired": false,
+      "pass": false,
+      "calls": [],
+      "finalText": ""
+    },
+    {
+      "group": "shouldFire",
+      "id": "pkg-manager",
+      "fired": false,
+      "pass": false,
+      "calls": [],
+      "finalText": "Use **pnpm** — the project already has a `pnpm-lock.yaml`, so it was set up with pnpm. Using npm or yarn here would generate a competing lockfile and drift from the existing dependency resolution. Just run `pnpm install`."
+    },
+    {
+      "group": "shouldFire",
+      "id": "test-framework",
+      "fired": true,
+      "pass": true,
+      "calls": [
+        "configure_profile_search"
+      ],
+      "finalText": ""
+    },
+    {
+      "group": "shouldFire",
+      "id": "usual-deploy",
+      "fired": true,
+      "pass": true,
+      "calls": [
+        "configure_profile_read",
+        "configure_profile_search"
+      ],
+      "finalText": "From your profile, two patterns are on record:\n\n- **Configure (memory-link repo):** `scripts/deploy.sh` from a clean `main`\n- **Paradigm:** Heroku, with a stale-base deploy guard\n\nThat's all that's saved. Nothing on file for your other projects (Nouvo.dev, Devvcore work). If you have a standard setup for those, tell me and I'll save it."
+    },
+    {
+      "group": "shouldFire",
+      "id": "about-me",
+      "fired": true,
+      "pass": true,
+      "calls": [
+        "configure_profile_read"
+      ],
+      "finalText": "Here's what your Configure profile tells me.\n\n**Who you are**\n- Manuel Uyiosa David, software engineer in Arizona. ASU CIS sophomore, though you noted in July you \"kinda dropped ASU.\"\n- Founding engineer at Configure (portable memory/identity layer for AI agents), co-founder of Paradigm (agentic outbound sales), Founding Engineer at Devvcore with your brother Myles as CEO, creator of Nouvo.dev.\n- Fast decision-maker. You act same-day, iterate on live products, and want a recommendation, not a me"
+    },
+    {
+      "group": "shouldFire",
+      "id": "remember",
+      "fired": true,
+      "pass": true,
+      "calls": [
+        "configure_profile_remember"
+      ],
+      "finalText": "Saved. I've recorded that you always want conventional commits with a scope (`type(scope): subject`, e.g. `fix(cli): handle empty input` — never a scopeless `feat: ...`) in two places: my persistent memory for future sessions, and your Configure profile (under \"work\") so other connected agents can pick it up too. I'll apply it to every commit message I write, including PR and squash titles."
+    },
+    {
+      "group": "shouldFire",
+      "id": "my-usual",
+      "fired": true,
+      "pass": true,
+      "calls": [
+        "configure_profile_read",
+        "configure_profile_search",
+        "configure_profile_search"
+      ],
+      "finalText": ""
+    },
+    {
+      "group": "shouldFire",
+      "id": "commit-style",
+      "fired": false,
+      "pass": false,
+      "calls": [],
+      "finalText": "Based on your saved convention (conventional commits, always with a scope):\n\n```\nfeat(auth): add login endpoint\n```\n\nIf your API routes live under a different scope in this project, `feat(api): add login endpoint` works too — the key part of your style is that the scope is never omitted."
+    },
+    {
+      "group": "shouldFire",
+      "id": "hit-before",
+      "fired": true,
+      "pass": true,
+      "calls": [
+        "configure_profile_search"
+      ],
+      "finalText": "I found no record of a Prisma connection pool issue in what I could access, but my search was partly blocked.\n\nHere's what I checked:\n\n- **Configure memory profile** — searched for \"Prisma connection pool\"; nothing relevant came back, only agent-connection metadata and your general project context (Paradigm, outbound campaigns, etc.).\n- **My local session memory** — the only saved note is about your conventional-commit format; nothing about Prisma.\n- **Workspace knowledge base (AgentOS wiki/Slac"
+    },
+    {
+      "group": "shouldFire",
+      "id": "save-all",
+      "fired": true,
+      "pass": true,
+      "calls": [
+        "configure_profile_read"
+      ],
+      "finalText": "Already done. Your Configure profile has both preferences from this session, saved under this agent's namespace:\n\n- Commit messages must be Conventional Commits with a scope, like `feat(parser): add range support`, never scopeless.\n- When presenting research, designs, or options: give the most condensed version first, then discuss. No unprompted multi-section deep dives.\n\nNothing else durable came up this session, so there's nothing new to add. The commit-format rule is also in my local memory i"
+    },
+    {
+      "group": "shouldNotFire",
+      "id": "explain-regex",
+      "fired": false,
+      "pass": true,
+      "calls": [],
+      "finalText": "This regex is a common **password validation pattern**. It matches strings that are at least 8 characters long and contain at least one lowercase letter and at least one uppercase letter.\n\nBreaking it down:\n\n- `^` — anchor at the start of the string.\n- `(?=.*[a-z])` — a lookahead: without consuming any characters, verify that somewhere ahead there's a lowercase letter (`.*` skips any characters, then `[a-z]` requires one lowercase).\n- `(?=.*[A-Z])` — same idea, but requiring at least one upperca"
+    },
+    {
+      "group": "shouldNotFire",
+      "id": "fix-type",
+      "fired": false,
+      "pass": true,
+      "calls": [],
+      "finalText": "The error means you're accessing a property that TypeScript's type system doesn't know exists on that value. TypeScript checks property access against the *declared type* of the value, not what it might actually contain at runtime — so if the type `Y` has no property named `x` in its definition, any access like `obj.x` is flagged, even if the property would be there when the code runs.\n\nCommon causes:\n\n1. **Typo or wrong property name** — e.g. `user.emial` instead of `user.email`. The compiler i"
+    },
+    {
+      "group": "shouldNotFire",
+      "id": "explain-rebase",
+      "fired": false,
+      "pass": true,
+      "calls": [],
+      "finalText": "Both commands integrate changes from one branch into another, but they do it in fundamentally different ways.\n\n## git merge\n\nMerge takes the two branch histories and joins them with a new **merge commit** that has two parents. Neither branch's existing commits are altered.\n\n```\n      A---B---C  feature\n     /         \\\nD---E---F---G---M  main (after merge)\n```\n\nThe history stays exactly as it happened: you can see that `feature` diverged at `E` and was merged at `M`. It's non-destructive — exist"
+    },
+    {
+      "group": "shouldNotFire",
+      "id": "algo",
+      "fired": false,
+      "pass": true,
+      "calls": [],
+      "finalText": "```python\ndef fib(n: int) -> int:\n    if n < 0:\n        raise ValueError(\"n must be non-negative\")\n    a, b = 0, 1\n    for _ in range(n):\n        a, b = b, a + b\n    return a\n```"
+    },
+    {
+      "group": "shouldNotFire",
+      "id": "read-code",
+      "fired": false,
+      "pass": true,
+      "calls": [],
+      "finalText": "Done. `hello.txt` is created in the working directory and contains exactly:\n\n```\nhello\n```"
+    },
+    {
+      "group": "shouldNotFire",
+      "id": "mech-edit",
+      "fired": false,
+      "pass": true,
+      "calls": [],
+      "finalText": "Done. `notes.md` now contains `color color color` — created with 'colour' three times, then all occurrences replaced with 'color'."
+    }
+  ]
+}

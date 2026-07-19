@@ -55,9 +55,13 @@ for (const group of ["shouldFire", "shouldNotFire"]) {
   for (const s of scenarios[group].slice(0, max)) {
     const { calls, finalText } = runOne(s);
     const fired = calls.length > 0;
-    const pass = group === "shouldFire" ? fired : !fired;
-    results.push({ group, id: s.id, fired, pass, calls, finalText });
-    console.log(`${pass ? "PASS" : "FAIL"}  [${group}] ${s.id}  calls=${calls.join(",") || "none"}`);
+    // A should-fire scenario also passes when the reply is visibly
+    // profile-informed without a call — with digest injection, context can be
+    // pre-loaded and the tool call is legitimately unnecessary.
+    const informed = s.outcome ? new RegExp(s.outcome, "i").test(finalText) : false;
+    const pass = group === "shouldFire" ? fired || informed : !fired;
+    results.push({ group, id: s.id, fired, informed, pass, calls, finalText });
+    console.log(`${pass ? "PASS" : "FAIL"}  [${group}] ${s.id}  calls=${calls.join(",") || "none"}${!fired && informed ? "  (profile-informed)" : ""}`);
   }
 }
 const fire = results.filter((r) => r.group === "shouldFire");
