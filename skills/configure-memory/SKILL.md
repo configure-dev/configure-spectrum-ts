@@ -13,7 +13,11 @@ description: >-
   configure_profile_search first. Also invoke on "remember this", "my usual",
   "like last time", "what do you know about me", "forget that", "save
   everything you know about me", and when scaffolding or setting up anything
-  new. Repo conventions stay in CLAUDE.md; user-portable facts live here.
+  new. Also invoke on project handoff verbs: "open my <X> project",
+  "hand off to <agent>", "continue where <agent> left off", "work with
+  <agent> on this" — projects live in the profile and kill pasted
+  transcripts between agents. Repo conventions stay in CLAUDE.md;
+  user-portable facts live here.
 ---
 
 # Configure Memory — the always-write doctrine
