@@ -44,6 +44,16 @@
       "id": "save-all",
       "prompt": "Save everything you learned about my preferences this session to my profile.",
       "outcome": "(nothing new|already carr|already in your|profile.*dev.preferences|dev.preferences)"
+    },
+    {
+      "id": "open-project",
+      "prompt": "Open my configure-memory-v2 project in Configure and tell me where the work stands and what's next.",
+      "outcome": "(handoff|PRs open|#5|#128|baton)"
+    },
+    {
+      "id": "hand-off",
+      "prompt": "I'm switching to Codex for the rest of this. Hand off the configure-memory-v2 project to it.",
+      "outcome": "(open my configure-memory-v2 project|handoff saved|baton)"
     }
   ],
   "shouldNotFire": [

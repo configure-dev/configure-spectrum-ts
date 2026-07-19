@@ -17,6 +17,7 @@ const label = arg("label", "run");
 const only = arg("only", null);
 const max = Number(arg("max", "99"));
 const cwd = arg("cwd", process.cwd());
+const only_ids = (arg("ids", "") || "").split(",").filter(Boolean);
 
 function runOne(s) {
   let out = "";
@@ -53,6 +54,7 @@ const results = [];
 for (const group of ["shouldFire", "shouldNotFire"]) {
   if (only && only !== group) continue;
   for (const s of scenarios[group].slice(0, max)) {
+    if (only_ids.length && !only_ids.includes(s.id)) continue;
     const { calls, finalText } = runOne(s);
     const fired = calls.length > 0;
     // A should-fire scenario also passes when the reply is visibly

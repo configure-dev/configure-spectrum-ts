@@ -1,0 +1,31 @@
+{
+  "label": "project-verbs",
+  "shouldFirePassPct": 100,
+  "shouldNotFirePassPct": null,
+  "results": [
+    {
+      "group": "shouldFire",
+      "id": "open-project",
+      "fired": true,
+      "informed": true,
+      "pass": true,
+      "calls": [
+        "configure_profile_read"
+      ],
+      "finalText": "Here's where configure-memory-v2 stands, from the project's notes in Configure (all three written by the claude-code agent today, July 19):\n\n**Where it stands:** Both PRs are open — configure-spectrum-ts #5 and memory-link #128 — and both have been through full review (review panel, pr-review-expert, and Devin) with all findings fixed. The v2 patterns are verified live on the deployed MCP: project box reads return attributed notes, and the leave-the-baton / pick-it-up handoff flow is confirmed w"
+    },
+    {
+      "group": "shouldFire",
+      "id": "hand-off",
+      "fired": true,
+      "informed": true,
+      "pass": true,
+      "calls": [
+        "configure_profile_read",
+        "configure_profile_remember",
+        "configure_profile_commit"
+      ],
+      "finalText": "Handoff is done. The baton in your Configure profile is fresh as of just now — it records that PRs configure-spectrum-ts #5 and memory-link #128 are open and review-clean, and that the next step is the docs UX simplification pass (drop terminal mocks, neutral example project, simpler Get-the-habit section) before your UI/UX pass gates the merge.\n\nTo pick it up in Codex, just tell it: **\"open my configure-memory-v2 project in Configure\"** — it will read the baton and continue from there, no trans"
+    }
+  ]
+}
