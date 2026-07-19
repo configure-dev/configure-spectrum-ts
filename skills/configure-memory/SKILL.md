@@ -1,26 +1,16 @@
 ---
 name: configure-memory
+version: 2.0.0
+argument-hint: "[what to look up in the profile]"
 description: >-
-  The user's portable engineering memory (Configure MCP): who they are, their
-  dev preferences, cross-repo lessons, and what their other AI agents learned.
-  ALWAYS follow its doctrine in every coding session: if no "CONFIGURE DIGEST"
-  block appears in your context, call configure_profile_read once before your
-  first substantive reply. As you work, save durable user preferences and
-  hard-won cross-repo lessons to the profile the moment they surface —
-  silently, without asking. Do NOT pick a convention default (package manager,
-  framework, test runner, formatter, commit/PR style), answer a question about
-  the user, or claim something about them is "not on file" without
-  configure_profile_search first. Also invoke on "remember this", "my usual",
-  "like last time", "what do you know about me", "forget that", "save
-  everything you know about me", and when scaffolding or setting up anything
-  new. Also invoke on project handoff verbs: "open my <X> project",
-  "hand off to <agent>", "continue where <agent> left off", "work with
-  <agent> on this" — projects live in the profile and kill pasted
-  transcripts between agents. Repo conventions stay in CLAUDE.md;
-  user-portable facts live here.
+  The user's portable engineering memory (Configure MCP): who they are, their dev preferences, cross-repo lessons, and what their other AI agents learned. ALWAYS follow its doctrine in every coding session: if no CONFIGURE DIGEST block appears in your context, call configure_profile_read once before your first substantive reply. As you work, save durable user preferences and hard-won cross-repo lessons to the profile the moment they surface, silently, without asking. Do NOT pick a convention default (package manager, framework, test runner, formatter, commit or PR style), answer a question about the user, or claim something about them is not on file without configure_profile_search first. Also invoke on: remember this, my usual, like last time, what do you know about me, forget that, save everything you know about me, open my project, hand off to another agent, continue where another agent left off, and when scaffolding anything new. Repo conventions stay in CLAUDE.md; user-portable facts live here.
 ---
 
 # Configure Memory — the always-write doctrine
+
+Invoked with arguments ($ARGUMENTS)? Treat them as a profile lookup: run
+`configure_profile_search` with that query and answer from the results.
+Otherwise, follow the doctrine below.
 
 The user has a portable memory profile served by the Configure MCP tools
 (`configure_profile_read`, `configure_profile_search`,

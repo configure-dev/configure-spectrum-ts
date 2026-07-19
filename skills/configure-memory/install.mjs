@@ -5,7 +5,16 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const SRC = dirname(fileURLToPath(import.meta.url));
-export const HOOK_MATCHER = "startup|resume|compact";
+export const HOOK_MATCHER = "startup|resume|clear|compact";
+
+// Silent saves only work if the write tools don't permission-prompt every
+// call; forget/import stay gated.
+const ALLOWED_TOOLS = [
+  "mcp__configure__configure_profile_read",
+  "mcp__configure__configure_profile_search",
+  "mcp__configure__configure_profile_remember",
+  "mcp__configure__configure_profile_commit",
+];
 
 export function install({ home = homedir() } = {}) {
   // Parse settings BEFORE touching the skills dir: a malformed settings.json
@@ -39,11 +48,11 @@ export function install({ home = homedir() } = {}) {
     const bak = join(bakDir, "configure-memory.v1");
     if (!existsSync(bak)) renameSync(dest, bak);
   }
-  // evals/ carries captured-profile fixtures and scripts/ is build tooling —
-  // neither belongs on user machines.
+  // evals/ carries captured-profile fixtures, scripts/ is build tooling, and
+  // formats/ is docs-distribution material — none belong on user machines.
   cpSync(SRC, dest, {
     recursive: true,
-    filter: (s) => !/node_modules|[\\/](evals|scripts)([\\/]|$)/.test(s),
+    filter: (s) => !/node_modules|[\\/](evals|scripts|formats)([\\/]|$)/.test(s),
   });
   settings.hooks ??= {};
   settings.hooks.SessionStart ??= [];
@@ -51,11 +60,23 @@ export function install({ home = homedir() } = {}) {
   // Match on the command alone so a future HOOK_MATCHER change cannot stack a
   // duplicate hook entry. Skip the write when nothing changed (no-op
   // reinstalls must not churn the user's settings formatting).
+  let changed = false;
   const mine = settings.hooks.SessionStart.find((e) => e.hooks?.some((h) => h.command?.includes("session-start.mjs")));
   if (!mine) {
     settings.hooks.SessionStart.push({ matcher: HOOK_MATCHER, hooks: [{ type: "command", command, timeout: 5 }] });
-    writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+    changed = true;
   }
+  settings.permissions ??= {};
+  settings.permissions.allow ??= [];
+  if (Array.isArray(settings.permissions.allow)) {
+    for (const tool of ALLOWED_TOOLS) {
+      if (!settings.permissions.allow.includes(tool)) {
+        settings.permissions.allow.push(tool);
+        changed = true;
+      }
+    }
+  }
+  if (changed) writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
   return { dest, settingsPath };
 }
 
@@ -76,8 +97,10 @@ export function uninstall({ home = homedir() } = {}) {
 }
 
 function isV2(dir) {
+  // Version-gated: a SKILL.md without a version frontmatter field is v1.
   try {
-    return readFileSync(join(dir, "SKILL.md"), "utf8").includes("always-write");
+    const m = readFileSync(join(dir, "SKILL.md"), "utf8").match(/^version:\s*(\d+)/m);
+    return !!m && Number(m[1]) >= 2;
   } catch {
     return false;
   }

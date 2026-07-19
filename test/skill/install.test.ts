@@ -27,6 +27,26 @@ describe("install", () => {
     const again = JSON.parse(readFileSync(join(home, ".claude", "settings.json"), "utf8"));
     expect(again.hooks.SessionStart.filter((e: any) => e.matcher === HOOK_MATCHER)).toHaveLength(1);
   });
+  it("allows read/search/remember/commit but not forget/import; fires on clear", () => {
+    const home = fakeHome();
+    install({ home });
+    const s = JSON.parse(readFileSync(join(home, ".claude", "settings.json"), "utf8"));
+    expect(s.hooks.SessionStart[0].matcher).toContain("clear");
+    expect(s.permissions.allow).toContain("mcp__configure__configure_profile_remember");
+    expect(s.permissions.allow).toContain("mcp__configure__configure_profile_commit");
+    expect(s.permissions.allow).not.toContain("mcp__configure__configure_profile_forget");
+    expect(s.permissions.allow).not.toContain("mcp__configure__configure_profile_import");
+  });
+  it("detects v2 by version frontmatter, not a doctrine phrase (no backup on reinstall)", () => {
+    const home = fakeHome();
+    install({ home }); // v1 present -> backed up
+    expect(existsSync(join(home, ".claude", "skill-backups", "configure-memory.v1"))).toBe(true);
+    // installed skill carries version: 2.x -> a second install makes no new backup
+    const s = JSON.parse(readFileSync(join(home, ".claude", "settings.json"), "utf8"));
+    writeFileSync(join(home, ".claude", "settings.json"), JSON.stringify(s)); // compact
+    install({ home });
+    expect(existsSync(join(home, ".claude", "skill-backups", "configure-memory.v1.1"))).toBe(false);
+  });
   it("preserves unrelated hooks and settings", () => {
     const home = fakeHome();
     mkdirSync(join(home, ".claude"), { recursive: true });
