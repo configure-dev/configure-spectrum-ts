@@ -126,6 +126,10 @@ function defaultSubjectToken(space: Space, message: Message): string | undefined
     tokenField(message, "signed_subject_token"),
     tokenField(message, "photonSubjectToken"),
     tokenField(message, "photon_subject_token"),
+    tokenField(message, "messageSenderProof"),
+    tokenField(message, "message_sender_proof"),
+    tokenField(message, "senderProof"),
+    tokenField(message, "sender_proof"),
     nestedToken(message, "metadata"),
     nestedToken(message, "providerMetadata"),
     nestedToken(message, "provider_metadata"),
@@ -149,7 +153,11 @@ function defaultTokenFromObject(value: unknown): string | undefined {
     tokenField(value, "signedSubjectToken"),
     tokenField(value, "signed_subject_token"),
     tokenField(value, "photonSubjectToken"),
-    tokenField(value, "photon_subject_token")
+    tokenField(value, "photon_subject_token"),
+    tokenField(value, "messageSenderProof"),
+    tokenField(value, "message_sender_proof"),
+    tokenField(value, "senderProof"),
+    tokenField(value, "sender_proof")
   );
 }
 

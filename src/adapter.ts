@@ -393,7 +393,7 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
         channel: string;
         subject: { key: string; externalId: string; senderId?: string };
         thread?: { key?: string; spaceId?: string; messageId?: string };
-        subjectToken?: string;
+        messageSenderProof?: string;
         connectors?: string[];
         displayName?: string;
         agentLogo?: string;
@@ -417,7 +417,7 @@ function createWithConfigure(options: ConfigureSpectrumOptions): ConfigureSpectr
     channel: string;
     subject: { key: string; externalId: string; senderId?: string };
     thread?: { key?: string; spaceId?: string; messageId?: string };
-    subjectToken?: string;
+    messageSenderProof?: string;
     connectors?: string[];
     displayName?: string;
     agentLogo?: string;
@@ -586,7 +586,11 @@ function messageUrlPayload(request: {
       spaceId: request.ctx.thread.spaceId,
       ...(request.ctx.thread.messageId ? { messageId: request.ctx.thread.messageId } : {}),
     },
-    ...(request.subjectToken ? { subjectToken: request.subjectToken } : {}),
+    // Wire name per the shipped backend contract: the Photon-signed evidence
+    // travels as messageSenderProof (adapter option/extraction hooks keep the
+    // subjectToken name). Sending subjectToken here would be silently ignored
+    // and permanently downgrade auto mode to plain links.
+    ...(request.subjectToken ? { messageSenderProof: request.subjectToken } : {}),
     ...(request.connectorIds && request.connectorIds.length > 0 ? { connectors: request.connectorIds } : {}),
     ...(signIn?.displayName ? { displayName: signIn.displayName } : {}),
     ...(signIn?.agentLogo ? { agentLogo: signIn.agentLogo } : {}),
@@ -633,12 +637,16 @@ function normalizeMessageUrlResult(value: unknown): ConfigureSpectrumMessageUrlR
 
 function messageUrlFallbackReason(value: string | undefined): ConfigureSpectrumMessageUrlFallbackReason | undefined {
   if (
-    value === "subject_signature_missing" ||
-    value === "subject_signature_invalid" ||
-    value === "subject_signature_unsupported"
+    value === "sender_proof_missing" ||
+    value === "sender_proof_invalid" ||
+    value === "sender_proof_unsupported"
   ) {
     return value;
   }
+  // Legacy spelling from the pre-implementation spec drafts.
+  if (value === "subject_signature_missing") return "sender_proof_missing";
+  if (value === "subject_signature_invalid") return "sender_proof_invalid";
+  if (value === "subject_signature_unsupported") return "sender_proof_unsupported";
 }
 
 function stringValue(value: unknown): string | undefined {

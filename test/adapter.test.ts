@@ -185,14 +185,14 @@ describe("withConfigure", () => {
           externalId: "spectrum:subject-1",
           senderId: "slack-user",
         },
-        subjectToken: "photon.signed.subject",
+        messageSenderProof: "photon.signed.subject",
         returnMode: "message",
       });
       return {
         mode: "plain",
         url: "https://sign-in.me/test-agent",
         reason: "signin",
-        fallbackReason: "subject_signature_unsupported",
+        fallbackReason: "sender_proof_unsupported",
       };
     });
     const configureSpectrum = withConfigure({
@@ -244,7 +244,7 @@ describe("withConfigure", () => {
           externalId: "spectrum:subject-1",
           senderId: "slack-user",
         },
-        subjectToken: "photon.signed.subject",
+        messageSenderProof: "photon.signed.subject",
         connectors: ["gmail"],
         messageLinePhone: "+14155550000",
         messageBody: "done!",
@@ -253,6 +253,7 @@ describe("withConfigure", () => {
       return {
         mode: "plain",
         url: "https://sign-in.me/test-agent/reconnect?connectors=gmail",
+        // Legacy spelling from the spec drafts — the adapter maps it.
         fallbackReason: "subject_signature_unsupported",
       };
     });
