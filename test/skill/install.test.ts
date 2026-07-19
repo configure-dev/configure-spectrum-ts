@@ -48,6 +48,24 @@ describe("install", () => {
     expect(() => install({ home })).toThrow(/not valid JSON/);
     expect(readFileSync(join(home, ".claude", "skills", "configure-memory", "SKILL.md"), "utf8")).toBe("v1");
   });
+  it("aborts on wrong-shaped hooks.SessionStart without copying the skill", () => {
+    const home = fakeHome();
+    writeFileSync(join(home, ".claude", "settings.json"), JSON.stringify({ hooks: { SessionStart: "oops" } }));
+    expect(() => install({ home })).toThrow(/must be an array/);
+    expect(readFileSync(join(home, ".claude", "skills", "configure-memory", "SKILL.md"), "utf8")).toBe("v1");
+  });
+  it("no-op reinstall does not rewrite settings.json, and evals/scripts are not installed", () => {
+    const home = fakeHome();
+    install({ home });
+    const settingsPath = join(home, ".claude", "settings.json");
+    const compact = JSON.stringify(JSON.parse(readFileSync(settingsPath, "utf8")));
+    writeFileSync(settingsPath, compact); // user's own formatting
+    install({ home });
+    expect(readFileSync(settingsPath, "utf8")).toBe(compact);
+    expect(existsSync(join(home, ".claude", "skills", "configure-memory", "evals"))).toBe(false);
+    expect(existsSync(join(home, ".claude", "skills", "configure-memory", "scripts"))).toBe(false);
+    expect(existsSync(join(home, ".claude", "skills", "configure-memory", "engine"))).toBe(true);
+  });
   it("uninstall removes only our hook entry", () => {
     const home = fakeHome();
     install({ home });

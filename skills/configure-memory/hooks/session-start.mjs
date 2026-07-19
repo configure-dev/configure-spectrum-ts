@@ -36,11 +36,13 @@ async function main() {
   try {
     context = await Promise.race([buildContext(), guard]);
   } catch {}
-  if (context)
-    process.stdout.write(
-      JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: context } })
-    );
-  process.exit(0);
+  if (!context) process.exit(0);
+  // Exit in the write callback: process.exit() does not flush pending pipe
+  // writes, which truncates the hook payload.
+  process.stdout.write(
+    JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: context } }),
+    () => process.exit(0)
+  );
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) main();

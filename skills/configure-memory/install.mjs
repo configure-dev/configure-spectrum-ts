@@ -21,6 +21,12 @@ export function install({ home = homedir() } = {}) {
       );
     }
   }
+  if (settings.hooks !== undefined && (typeof settings.hooks !== "object" || settings.hooks === null || Array.isArray(settings.hooks))) {
+    throw new Error('~/.claude/settings.json: "hooks" must be an object. Fix it and re-run; nothing was installed.');
+  }
+  if (settings.hooks?.SessionStart !== undefined && !Array.isArray(settings.hooks.SessionStart)) {
+    throw new Error('~/.claude/settings.json: "hooks.SessionStart" must be an array. Fix it and re-run; nothing was installed.');
+  }
 
   const skillsDir = join(home, ".claude", "skills");
   const dest = join(skillsDir, "configure-memory");
@@ -33,22 +39,35 @@ export function install({ home = homedir() } = {}) {
     const bak = join(bakDir, "configure-memory.v1");
     if (!existsSync(bak)) renameSync(dest, bak);
   }
-  cpSync(SRC, dest, { recursive: true, filter: (s) => !s.includes("node_modules") });
+  // evals/ carries captured-profile fixtures and scripts/ is build tooling —
+  // neither belongs on user machines.
+  cpSync(SRC, dest, {
+    recursive: true,
+    filter: (s) => !/node_modules|[\\/](evals|scripts)([\\/]|$)/.test(s),
+  });
   settings.hooks ??= {};
   settings.hooks.SessionStart ??= [];
   const command = `node "${join(dest, "hooks", "session-start.mjs")}"`;
-  const mine = settings.hooks.SessionStart.find(
-    (e) => e.matcher === HOOK_MATCHER && e.hooks?.some((h) => h.command?.includes("session-start.mjs"))
-  );
-  if (!mine) settings.hooks.SessionStart.push({ matcher: HOOK_MATCHER, hooks: [{ type: "command", command, timeout: 5 }] });
-  writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+  // Match on the command alone so a future HOOK_MATCHER change cannot stack a
+  // duplicate hook entry. Skip the write when nothing changed (no-op
+  // reinstalls must not churn the user's settings formatting).
+  const mine = settings.hooks.SessionStart.find((e) => e.hooks?.some((h) => h.command?.includes("session-start.mjs")));
+  if (!mine) {
+    settings.hooks.SessionStart.push({ matcher: HOOK_MATCHER, hooks: [{ type: "command", command, timeout: 5 }] });
+    writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+  }
   return { dest, settingsPath };
 }
 
 export function uninstall({ home = homedir() } = {}) {
   const settingsPath = join(home, ".claude", "settings.json");
   if (!existsSync(settingsPath)) return;
-  const settings = JSON.parse(readFileSync(settingsPath, "utf8"));
+  let settings;
+  try {
+    settings = JSON.parse(readFileSync(settingsPath, "utf8"));
+  } catch (e) {
+    throw new Error(`~/.claude/settings.json is not valid JSON (${e.message}). Fix it and re-run --uninstall.`);
+  }
   if (settings.hooks?.SessionStart)
     settings.hooks.SessionStart = settings.hooks.SessionStart.filter(
       (e) => !(e.matcher === HOOK_MATCHER && e.hooks?.some((h) => h.command?.includes("session-start.mjs")))
