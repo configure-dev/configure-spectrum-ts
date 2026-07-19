@@ -36,6 +36,12 @@ export function install({ home = homedir() } = {}) {
   if (settings.hooks?.SessionStart !== undefined && !Array.isArray(settings.hooks.SessionStart)) {
     throw new Error('~/.claude/settings.json: "hooks.SessionStart" must be an array. Fix it and re-run; nothing was installed.');
   }
+  if (settings.permissions !== undefined && (typeof settings.permissions !== "object" || settings.permissions === null || Array.isArray(settings.permissions))) {
+    throw new Error('~/.claude/settings.json: "permissions" must be an object. Fix it and re-run; nothing was installed.');
+  }
+  if (settings.permissions?.allow !== undefined && !Array.isArray(settings.permissions.allow)) {
+    throw new Error('~/.claude/settings.json: "permissions.allow" must be an array. Fix it and re-run; nothing was installed.');
+  }
 
   const skillsDir = join(home, ".claude", "skills");
   const dest = join(skillsDir, "configure-memory");

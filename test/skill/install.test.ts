@@ -74,6 +74,20 @@ describe("install", () => {
     expect(() => install({ home })).toThrow(/must be an array/);
     expect(readFileSync(join(home, ".claude", "skills", "configure-memory", "SKILL.md"), "utf8")).toBe("v1");
   });
+  it("aborts on non-object permissions without half-installing", () => {
+    const home = fakeHome();
+    writeFileSync(join(home, ".claude", "settings.json"), JSON.stringify({ permissions: "all" }));
+    expect(() => install({ home })).toThrow(/permissions.*must be an object/);
+    expect(readFileSync(join(home, ".claude", "skills", "configure-memory", "SKILL.md"), "utf8")).toBe("v1");
+  });
+  it("appends to an existing permissions.allow, preserving prior entries", () => {
+    const home = fakeHome();
+    writeFileSync(join(home, ".claude", "settings.json"), JSON.stringify({ permissions: { allow: ["Bash(ls)"] } }));
+    install({ home });
+    const s = JSON.parse(readFileSync(join(home, ".claude", "settings.json"), "utf8"));
+    expect(s.permissions.allow).toContain("Bash(ls)");
+    expect(s.permissions.allow).toContain("mcp__configure__configure_profile_read");
+  });
   it("no-op reinstall does not rewrite settings.json, and evals/scripts are not installed", () => {
     const home = fakeHome();
     install({ home });
