@@ -19,12 +19,11 @@ export async function buildContext({ findCreds = findConfigureCredentials, call 
         return null;
       }
     };
-    // Own namespace first (unjudged agent writes live there), then the judged category box.
-    const boxes = await Promise.all([
-      profile?.self?.id ? readBox(profile.self.id) : null,
-      readBox("dev-preferences"),
-    ]);
-    const facts = boxes.flatMap((b) => b?.facts || b?.memories || b?.top_facts || b?.entries || []);
+    // Own namespace only: agent writes live there as testimony. Category-box
+    // reads (e.g. "dev-preferences") return judged canonical facts, which MCP
+    // writes never reach today — reading them here is a guaranteed miss.
+    const own = profile?.self?.id ? await readBox(profile.self.id) : null;
+    const facts = own?.facts || own?.memories || own?.top_facts || own?.entries || [];
     return composeDigest(profile, facts.length ? { facts } : null) ?? NUDGE;
   } catch {
     return NUDGE;

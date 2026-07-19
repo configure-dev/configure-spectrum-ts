@@ -8,6 +8,20 @@ const SRC = dirname(fileURLToPath(import.meta.url));
 export const HOOK_MATCHER = "startup|resume|compact";
 
 export function install({ home = homedir() } = {}) {
+  // Parse settings BEFORE touching the skills dir: a malformed settings.json
+  // must abort cleanly, not leave a half-install (skill copied, hook missing).
+  const settingsPath = join(home, ".claude", "settings.json");
+  let settings = {};
+  if (existsSync(settingsPath)) {
+    try {
+      settings = JSON.parse(readFileSync(settingsPath, "utf8"));
+    } catch (e) {
+      throw new Error(
+        `~/.claude/settings.json is not valid JSON (${e.message}). Fix it and re-run; nothing was installed.`
+      );
+    }
+  }
+
   const skillsDir = join(home, ".claude", "skills");
   const dest = join(skillsDir, "configure-memory");
   mkdirSync(skillsDir, { recursive: true });
@@ -20,9 +34,6 @@ export function install({ home = homedir() } = {}) {
     if (!existsSync(bak)) renameSync(dest, bak);
   }
   cpSync(SRC, dest, { recursive: true, filter: (s) => !s.includes("node_modules") });
-
-  const settingsPath = join(home, ".claude", "settings.json");
-  const settings = existsSync(settingsPath) ? JSON.parse(readFileSync(settingsPath, "utf8")) : {};
   settings.hooks ??= {};
   settings.hooks.SessionStart ??= [];
   const command = `node "${join(dest, "hooks", "session-start.mjs")}"`;

@@ -16,7 +16,7 @@ export function composeDigest(profile, devBox) {
     );
   const devFacts = (devBox?.facts || devBox?.memories || devBox?.top_facts || []).slice(0, 12);
   if (devFacts.length) {
-    lines.push("Dev preferences:");
+    lines.push("From your profile (this agent's recent notes):");
     for (const f of devFacts) lines.push(`- ${String(f.text ?? f).slice(0, 140)}`);
   }
   const toc = (arr) => (arr || []).map((b) => `${b.id}(${b.count})`).join(" ");

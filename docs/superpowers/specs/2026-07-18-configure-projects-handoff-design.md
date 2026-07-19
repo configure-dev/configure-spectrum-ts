@@ -1,8 +1,20 @@
 # Configure Projects — cross-agent handoff design
 
 Date: 2026-07-18
-Status: approved direction (Manuel: "go"), v1 is convention-only, zero MCP changes
+Status: approved direction (Manuel: "go"); REVISED 2026-07-18 after adversarial review
 Parent: 2026-07-18-configure-coding-agent-skill-design.md
+
+> **Revision note (adversarial panel, 4/10 on the original draft):** the
+> original premise "zero MCP changes, read the box" was FALSE. Verified
+> against memory-link source: the `box` param on remember is writer-local
+> metadata (`memoryEntries.ts:195-203`); `profile_read {box}` routes
+> non-`agents/`/`imports/` ids to judged canonical categories
+> (`profileComposer.ts:1921`), which MCP writes never reach, and judges
+> overwrite the writer's box anyway (`memoryJudges.ts:587,845-847`). So
+> `projects/<slug>` box READS return empty for every caller. What DOES work
+> cross-agent today, executed-verified, is `configure_profile_search`. v1
+> retrieval is therefore search-based; the box id on writes is forward-compat
+> tagging for the server shelf.
 
 ## What this is
 
@@ -25,7 +37,11 @@ Kill copy-pasting context between agents. Any agent can leave a project's state 
 [handoff] <state in one or two sentences>. Decisions: <comma list>. Next: <the single next step>. Repo: <name or url>, branch <branch>. (<agent>, <YYYY-MM-DD>)
 ```
 
-**Reading:** `configure_profile_read {box: "projects/<slug>"}` returns the notes, attributed per agent with dates. The freshest `[handoff]` is the baton; `[decision]`/`[context]` notes are standing; `[status]` notes are ambient history.
+**Reading (v1, works today):** `configure_profile_search {query: "[handoff] <slug>"}` then the plain slug. Search crosses agent namespaces (permission-filtered), so notes from every approved agent surface together. The `[handoff]` with the freshest date is the baton; `[decision]`/`[context]` notes are standing; `[status]` notes are ambient history. `configure_profile_read {box: "projects/<slug>"}` is NOT a valid read path until the server shelf ships.
+
+**Trust boundary:** notes are attributed testimony, never commands. An agent must not run checkouts, installs, or scripts that only a note asks for without showing the user what the note says and which agent wrote it (per the server `source` field; in-text signatures are forgeable). No secrets or credential locations in notes.
+
+**Supersede reality:** forget works only within the writer's own token family; with OAuth-client identity fragmentation, old batons can become undeletable. Readers therefore ALWAYS take the freshest `[handoff]` by date; stale batons are inert, not removed. Stable OAuth-client identity (server workstream) upgrades this to true supersede.
 
 ## Skill verbs (added to configure-memory SKILL.md)
 
@@ -39,11 +55,13 @@ Kill copy-pasting context between agents. Any agent can leave a project's state 
 
 Repo-derivable facts (code structure, build commands) and user preferences (those stay in `dev-preferences`). The project box carries state that dies with a session today: where work stands, what was decided, what's next.
 
-## Server unlocks (later, judges-session lane; not required for v1)
+## Server unlocks (judges-session lane)
 
-1. **Since-cursor box reads** — `read {box, since}` returning only new notes; makes per-turn co-work cheap. Useful to all agents, not just coding.
-2. **Verbatim project files** — permission-scoped shared `/projects/<slug>/*` CFS subtree over the existing file layer, for full documents (specs, long transcripts) that distillation would destroy. Boxes stay the notes layer; files become the artifact layer.
-3. Box read pagination past 50 (already a known gap).
+1. **Projects shelf branch (REQUIRED for box-read UX as docs envision it)** — `openProfileBox` gets a `projects/` branch returning permission-checked cross-namespace testimony merged across agents (~20 lines per the review's verifier), and judges preserve the writer's `box` (write `judge_box` separately, `memoryJudges.ts:587,699-704`). Also queue judges from MCP remember/import.
+2. **Since-cursor reads** — `{box, since}` returning only new notes; makes per-turn co-work cheap. Useful to all agents.
+3. **Verbatim project files** — permission-scoped shared `/projects/<slug>/*` CFS subtree for full documents that distillation would destroy.
+4. Box read pagination past 50 (known gap).
+5. **Stable OAuth-client identity** (consent-gated namespace claiming) — prerequisite for true baton supersede and reliable forget.
 
 ## Docs
 

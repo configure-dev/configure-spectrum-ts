@@ -42,6 +42,12 @@ describe("install", () => {
     expect(s.model).toBe("opus");
     expect(s.hooks.SessionStart.some((e: any) => e.hooks[0].command === "other.sh")).toBe(true);
   });
+  it("aborts cleanly on malformed settings.json without copying the skill", () => {
+    const home = fakeHome();
+    writeFileSync(join(home, ".claude", "settings.json"), "{ not json");
+    expect(() => install({ home })).toThrow(/not valid JSON/);
+    expect(readFileSync(join(home, ".claude", "skills", "configure-memory", "SKILL.md"), "utf8")).toBe("v1");
+  });
   it("uninstall removes only our hook entry", () => {
     const home = fakeHome();
     install({ home });
