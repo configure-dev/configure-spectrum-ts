@@ -71,9 +71,9 @@ repo, and library version in the fact text.
   session in a different repo act differently because of this?"* Include
   date, repo, and version. Soft budget: ~5 inferred saves per session; prefer
   quality over volume.
-- **Continuity pointer**: when finishing significant work in a repo, save ONE
-  fact: `working on <repo>: <state>, next: <step> (<date>)`. Supersede the
-  old pointer (save new; forget the previous one by id if it is yours).
+- **Project handoff**: when finishing significant work in a repo, save a
+  `[handoff]` note into the project's box (see Projects below), superseding
+  your previous one.
 - **Bulk export**: when the user says "save everything you know about me",
   distill the session's durable learnings and save them fact-by-fact (or
   `configure_profile_import` for a long-form dump).
@@ -82,6 +82,35 @@ repo, and library version in the fact text.
   visible write). If the id belongs to an older token family and forget
   fails, say so plainly and point the user at their Configure profile page —
   never fail silently.
+
+## Projects — work across agents
+
+The user's projects live in `projects/<slug>` boxes (kebab-case product or
+repo name). Any agent can leave state there; any agent continues from it.
+This kills pasting transcripts between agents.
+
+- **"Open my `<X>` project" / "continue where `<agent>` left off"**: read
+  `configure_profile_read {box: "projects/<slug>"}` (find the slug in the box
+  TOC if unsure). The freshest `[handoff]` note is the baton: state,
+  decisions, the exact next step. Act on it.
+- **Finishing significant work**: save one `[handoff]` note into the project
+  box, format:
+  `[handoff] <state>. Decisions: <list>. Next: <one step>. Repo: <name>, branch <branch>. (<agent>, <date>)`
+  Forget your own previous `[handoff]` for that project (supersede, never
+  append batons).
+- **"Hand off to `<agent>`"**: save the `[handoff]`, then give the user the
+  line for the next agent: "open my `<X>` project in Configure."
+- **Durable choices** get a `[decision]` note the moment they are made
+  ("chose Postgres over Mongo: relational integrity for billing").
+  Milestones worth sharing mid-work get `[status]`. Background a future
+  agent needs gets `[context]`.
+- **Working alongside another agent** on the same project: re-read the
+  project box at natural checkpoints (task boundaries, before big
+  decisions); append `[status]` at milestones. Freshness comes from
+  turn-boundary reads, not streaming.
+- Repo-derivable facts and user preferences do NOT go in project boxes; the
+  box carries only what dies with a session today: where work stands, what
+  was decided, what's next.
 
 ## Rules
 
