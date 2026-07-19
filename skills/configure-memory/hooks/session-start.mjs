@@ -12,18 +12,27 @@ export async function buildContext({ findCreds = findConfigureCredentials, call 
   if (!creds) return null; // Configure not set up here — stay silent.
   try {
     const profile = await call({ ...creds, name: "configure_profile_read", args: {}, timeoutMs: 2000 });
-    let devBox = null;
-    try {
-      devBox = await call({ ...creds, name: "configure_profile_read", args: { box: "dev-preferences" }, timeoutMs: 1200 });
-    } catch {}
-    return composeDigest(profile, devBox) ?? NUDGE;
+    const readBox = async (box) => {
+      try {
+        return await call({ ...creds, name: "configure_profile_read", args: { box }, timeoutMs: 2000 });
+      } catch {
+        return null;
+      }
+    };
+    // Own namespace first (unjudged agent writes live there), then the judged category box.
+    const boxes = await Promise.all([
+      profile?.self?.id ? readBox(profile.self.id) : null,
+      readBox("dev-preferences"),
+    ]);
+    const facts = boxes.flatMap((b) => b?.facts || b?.memories || b?.top_facts || b?.entries || []);
+    return composeDigest(profile, facts.length ? { facts } : null) ?? NUDGE;
   } catch {
     return NUDGE;
   }
 }
 
 async function main() {
-  const guard = new Promise((r) => setTimeout(() => r(NUDGE), 2500));
+  const guard = new Promise((r) => setTimeout(() => r(NUDGE), 4500));
   let context = null;
   try {
     context = await Promise.race([buildContext(), guard]);
