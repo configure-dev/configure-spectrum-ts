@@ -17,7 +17,8 @@ describe("install", () => {
     install({ home });
     const skills = join(home, ".claude", "skills");
     expect(readFileSync(join(skills, "configure-memory", "SKILL.md"), "utf8")).toContain("always-write");
-    expect(readFileSync(join(skills, "configure-memory.v1.bak", "SKILL.md"), "utf8")).toBe("v1");
+    expect(readFileSync(join(home, ".claude", "skill-backups", "configure-memory.v1", "SKILL.md"), "utf8")).toBe("v1");
+    expect(existsSync(join(skills, "configure-memory.v1.bak"))).toBe(false);
     const settings = JSON.parse(readFileSync(join(home, ".claude", "settings.json"), "utf8"));
     const entries = settings.hooks.SessionStart.filter((e: any) => e.matcher === HOOK_MATCHER);
     expect(entries).toHaveLength(1);

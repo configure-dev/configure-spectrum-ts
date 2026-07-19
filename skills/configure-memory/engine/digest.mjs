@@ -30,7 +30,7 @@ export function composeDigest(profile, devBox) {
       `Changes: ${changed} newer facts since last summary (freshest: ${String(profile.changesSince.memories[0]?.text ?? "").slice(0, 120)}).`
     );
   lines.push(
-    'Doctrine: as you learn durable user preferences or cross-repo lessons, silently configure_profile_remember them into box "dev-preferences". Search before saying anything about the user is not on file. Repo facts stay in CLAUDE.md.'
+    'Doctrine: as you learn durable user preferences or cross-repo lessons, silently configure_profile_remember them into box "dev-preferences". Search before saying anything about the user is not on file. Repo facts stay in CLAUDE.md. If configure_* tools are not attached to this session, use this digest as-is and skip the tool calls.'
   );
   let out = lines.join("\n");
   if (out.length > CAP_CHARS) out = out.slice(0, CAP_CHARS - 1) + "…";

@@ -12,7 +12,11 @@ export function install({ home = homedir() } = {}) {
   const dest = join(skillsDir, "configure-memory");
   mkdirSync(skillsDir, { recursive: true });
   if (existsSync(dest) && !isV2(dest)) {
-    const bak = join(skillsDir, "configure-memory.v1.bak");
+    // Backup must live OUTSIDE ~/.claude/skills — a SKILL.md in any child dir
+    // there is picked up as a live (competing) skill.
+    const bakDir = join(home, ".claude", "skill-backups");
+    mkdirSync(bakDir, { recursive: true });
+    const bak = join(bakDir, "configure-memory.v1");
     if (!existsSync(bak)) renameSync(dest, bak);
   }
   cpSync(SRC, dest, { recursive: true, filter: (s) => !s.includes("node_modules") });

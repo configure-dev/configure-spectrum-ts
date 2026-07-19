@@ -28,6 +28,7 @@ describe("composeDigest", () => {
     expect(d).toContain("2 newer");
     expect(d).toContain("dev-preferences");
     expect(d).toContain("configure_profile_search");
+    expect(d).toContain("If configure_* tools are not attached");
   });
   it("accepts alternate box shapes (memories / top_facts) and missing box", () => {
     expect(composeDigest(profile, { memories: [{ text: "alt" }] })).toContain("alt");
