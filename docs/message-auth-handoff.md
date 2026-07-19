@@ -40,6 +40,9 @@ As of this implementation baseline, the repos expose:
 - `POST /v1/auth/sign-in/message-url`
 - `POST /v1/auth/sign-in/recognize-phone`
 - `POST /v1/auth/sign-in/validate`
+- `POST /v1/photon/installations` + `GET /v1/photon/installations/current` — provision Configure credentials from Photon project credentials (see `docs/photon-provisioning.md`)
+
+Wire names are settled by the shipped backend: the Photon-signed evidence field is `messageSenderProof` (`message_sender_proof` accepted), and plain fallbacks report `sender_proof_missing | sender_proof_invalid | sender_proof_unsupported`. The adapter posts and parses those names (legacy `subject_signature_*` responses are still mapped). Earlier drafts said `subjectToken`/`subject_signature_*` — that spelling never reached the wire.
 
 The message URL endpoint currently implements the conservative preview behavior: it validates the request, audits the attempt, and returns `mode: "plain"` until Photon signature verification is configured. It must not create `sign-in.me/{agent}/{code}` links without verified Photon-signed subject evidence.
 
@@ -218,7 +221,7 @@ type CreateMessageSignInUrlRequest = {
     messageId?: string;
   };
 
-  subjectToken?: string;
+  messageSenderProof?: string;
   connectors?: string[];
   displayName?: string;
   agentLogo?: string;
@@ -232,8 +235,8 @@ Notes:
 
 - `subject.key` is the adapter's stable subject key, such as `sp_...`.
 - `subject.externalId` is the developer-scoped fallback external id, such as `spectrum:sp_...`.
-- `subjectToken` is the Photon-signed subject token when Spectrum exposes one. It is server-side only and must not be sent to the model.
-- A code-bearing `mode: "minted"` response requires a present and verified `subjectToken`. If it is absent or invalid, the endpoint should return `mode: "plain"` with `fallbackReason` and no `code`.
+- `messageSenderProof` carries the Photon-signed subject token when Spectrum exposes one (the adapter's extraction hook is still named `identity.subjectToken`; only the wire field uses the proof name). It is server-side only and must not be sent to the model.
+- A code-bearing `mode: "minted"` response requires a present and verified `messageSenderProof`. If it is absent or invalid, the endpoint should return `mode: "plain"` with `fallbackReason` and no `code`.
 - Do not put raw phone numbers in the code-bearing URL.
 - Phone candidates, if needed for recognition, should remain part of recognition APIs rather than the message URL request.
 
@@ -254,9 +257,9 @@ type CreateMessageSignInUrlResponse =
       url: string;
       reason: "signin" | "reconnect" | "permissions";
       fallbackReason:
-        | "subject_signature_missing"
-        | "subject_signature_invalid"
-        | "subject_signature_unsupported";
+        | "sender_proof_missing"
+        | "sender_proof_invalid"
+        | "sender_proof_unsupported";
       idempotencyKey?: string;
     };
 ```
@@ -381,7 +384,7 @@ const result = await configure.auth.createMessageSignInUrl({
     spaceId: ctx.thread.spaceId,
     messageId: ctx.message.id,
   },
-  subjectToken,
+  messageSenderProof: subjectToken,
   idempotencyKey,
 });
 ```
@@ -404,7 +407,7 @@ export interface CreateMessageSignInUrlOptions {
     spaceId?: string;
     messageId?: string;
   };
-  subjectToken?: string;
+  messageSenderProof?: string;
   connectors?: string[];
   displayName?: string;
   agentLogo?: string;
@@ -420,9 +423,9 @@ export interface CreateMessageSignInUrlResult {
   reason: MessageSignInReason;
   expiresAt?: string;
   fallbackReason?:
-    | "subject_signature_missing"
-    | "subject_signature_invalid"
-    | "subject_signature_unsupported";
+    | "sender_proof_missing"
+    | "sender_proof_invalid"
+    | "sender_proof_unsupported";
   idempotencyKey?: string;
 }
 ```
@@ -449,9 +452,9 @@ type ConfigureSpectrumUrlResult = {
   expiresAt?: string;
   idempotencyKey?: string;
   fallbackReason?:
-    | "subject_signature_missing"
-    | "subject_signature_invalid"
-    | "subject_signature_unsupported";
+    | "sender_proof_missing"
+    | "sender_proof_invalid"
+    | "sender_proof_unsupported";
 };
 ```
 
@@ -525,13 +528,13 @@ await configure.auth.createMessageSignInUrl({
   reason: "reconnect",
   channel,
   subject,
-  subjectToken,
+  messageSenderProof: subjectToken,
   connectors: ["gmail"],
   idempotencyKey,
 });
 ```
 
-If `subjectToken` is absent or cannot be verified, the response should be `mode: "plain"` and the hosted surface should fall back to normal sign-in/reconnect handling without a magic code.
+If `messageSenderProof` is absent or cannot be verified, the response should be `mode: "plain"` and the hosted surface should fall back to normal sign-in/reconnect handling without a magic code.
 
 Reconnect signals:
 
@@ -682,7 +685,7 @@ Backend tests:
 - `pk_` cannot call the message URL endpoint.
 - Missing subject key/external id fails validation.
 - Missing Photon signature returns a plain fallback response and creates no message-link row.
-- Invalid Photon signature returns `mode: "plain"` with `fallbackReason: "subject_signature_invalid"` and creates no message-link row.
+- Invalid Photon signature returns `mode: "plain"` with `fallbackReason: "sender_proof_invalid"` and creates no message-link row.
 - Valid Photon signature is required for a code-bearing `mode: "minted"` response.
 - Idempotency returns the same unexpired code-bearing link.
 - Expired idempotent code-bearing link is replaced.
