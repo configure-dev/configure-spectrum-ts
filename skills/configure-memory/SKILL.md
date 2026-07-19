@@ -125,6 +125,11 @@ empty, so always fall back to search.
   category boxes.
 - Never pass `user_id`/`agent`/identity arguments; identity comes from the
   session. Never construct sign-in links; `configure_connect` mints them.
+- If a read or search returns an "agent could not be resolved" / "reconnect"
+  signal (not just empty results), do NOT conclude the user has no data.
+  Tell the user their Configure connection needs reconnecting and offer
+  `configure_connect`; treat it as a connection problem, never as "not on
+  file."
 - Configure MCP absent or unlinked: proceed with the task normally, suggest
   connecting once (`https://mcp.configure.dev`), do not improvise a memory
   substitute.

@@ -37,3 +37,6 @@ paramount to the user. The pattern:
    summary, then retry. Never stop using the tools over one failure.
 8. If configure_* tools are not available in this session, skip all of the
    above and proceed with the task normally.
+9. If a read/search says the agent could not be resolved or asks you to
+   reconnect, that is a connection problem, not "no data" — tell the user to
+   reconnect Configure; never conclude their profile is empty.
