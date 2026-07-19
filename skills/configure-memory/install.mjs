@@ -1,0 +1,60 @@
+#!/usr/bin/env node
+import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const SRC = dirname(fileURLToPath(import.meta.url));
+export const HOOK_MATCHER = "startup|resume|compact";
+
+export function install({ home = homedir() } = {}) {
+  const skillsDir = join(home, ".claude", "skills");
+  const dest = join(skillsDir, "configure-memory");
+  mkdirSync(skillsDir, { recursive: true });
+  if (existsSync(dest) && !isV2(dest)) {
+    const bak = join(skillsDir, "configure-memory.v1.bak");
+    if (!existsSync(bak)) renameSync(dest, bak);
+  }
+  cpSync(SRC, dest, { recursive: true, filter: (s) => !s.includes("node_modules") });
+
+  const settingsPath = join(home, ".claude", "settings.json");
+  const settings = existsSync(settingsPath) ? JSON.parse(readFileSync(settingsPath, "utf8")) : {};
+  settings.hooks ??= {};
+  settings.hooks.SessionStart ??= [];
+  const command = `node "${join(dest, "hooks", "session-start.mjs")}"`;
+  const mine = settings.hooks.SessionStart.find(
+    (e) => e.matcher === HOOK_MATCHER && e.hooks?.some((h) => h.command?.includes("session-start.mjs"))
+  );
+  if (!mine) settings.hooks.SessionStart.push({ matcher: HOOK_MATCHER, hooks: [{ type: "command", command, timeout: 5 }] });
+  writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+  return { dest, settingsPath };
+}
+
+export function uninstall({ home = homedir() } = {}) {
+  const settingsPath = join(home, ".claude", "settings.json");
+  if (!existsSync(settingsPath)) return;
+  const settings = JSON.parse(readFileSync(settingsPath, "utf8"));
+  if (settings.hooks?.SessionStart)
+    settings.hooks.SessionStart = settings.hooks.SessionStart.filter(
+      (e) => !(e.matcher === HOOK_MATCHER && e.hooks?.some((h) => h.command?.includes("session-start.mjs")))
+    );
+  writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+}
+
+function isV2(dir) {
+  try {
+    return readFileSync(join(dir, "SKILL.md"), "utf8").includes("always-write");
+  } catch {
+    return false;
+  }
+}
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  if (process.argv.includes("--uninstall")) {
+    uninstall({});
+    console.log("configure-memory hooks removed");
+  } else {
+    const { dest } = install({});
+    console.log(`configure-memory v2 installed at ${dest}; SessionStart hook registered`);
+  }
+}
