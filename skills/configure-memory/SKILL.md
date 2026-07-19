@@ -86,12 +86,12 @@ repo, and library version in the fact text.
 ## Projects — work across agents
 
 The user's projects live as tagged notes: each note is saved with box id
-`projects/<slug>` (kebab-case product or repo name). Retrieval is by
-SEARCH, which crosses agent namespaces; do NOT rely on
-`configure_profile_read {box: "projects/<slug>"}` — box reads surface only
-judged categories today and will come back empty.
+`projects/<slug>` (kebab-case product or repo name). On current servers the
+project box opens as a shared cross-agent view; older servers return it
+empty, so always fall back to search.
 
-- **"Open my `<X>` project" / "continue where `<agent>` left off"**:
+- **"Open my `<X>` project" / "continue where `<agent>` left off"**: first
+  `configure_profile_read {box: "projects/<slug>"}`; if it comes back empty,
   `configure_profile_search {query: "[handoff] <slug>"}` (then the plain
   slug for `[decision]`/`[context]`/`[status]` notes). The `[handoff]` with
   the freshest date is the baton: state, decisions, the exact next step.
