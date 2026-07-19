@@ -115,7 +115,9 @@ empty, so always fall back to search.
   line for the next agent: "open my `<X>` project in Configure."
 - **Durable choices** get a `[decision]` note the moment they are made.
   Milestones worth sharing mid-work get `[status]`. Background a future
-  agent needs gets `[context]`.
+  agent needs gets `[context]`. Stuck on something another agent or the
+  user could clear? Leave a `[blocker]` note naming what would unblock it,
+  and clear blockers you resolve with a `[status]` note.
 - **Working alongside another agent** on the same project: re-run the
   project search at natural checkpoints (task boundaries, before big
   decisions); append `[status]` at milestones. Freshness comes from
