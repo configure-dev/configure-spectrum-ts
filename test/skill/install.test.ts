@@ -88,6 +88,18 @@ describe("install", () => {
     expect(s.permissions.allow).toContain("Bash(ls)");
     expect(s.permissions.allow).toContain("mcp__configure__configure_profile_read");
   });
+  it("rewrites when the hook is already present but permissions are missing", () => {
+    const home = fakeHome();
+    install({ home });
+    const settingsPath = join(home, ".claude", "settings.json");
+    const s = JSON.parse(readFileSync(settingsPath, "utf8"));
+    delete s.permissions; // hook stays, permissions stripped
+    writeFileSync(settingsPath, JSON.stringify(s));
+    install({ home });
+    const after = JSON.parse(readFileSync(settingsPath, "utf8"));
+    expect(after.permissions.allow).toContain("mcp__configure__configure_profile_remember");
+    expect(after.hooks.SessionStart.filter((e: any) => e.matcher === HOOK_MATCHER)).toHaveLength(1);
+  });
   it("no-op reinstall does not rewrite settings.json, and evals/scripts are not installed", () => {
     const home = fakeHome();
     install({ home });
@@ -98,6 +110,7 @@ describe("install", () => {
     expect(readFileSync(settingsPath, "utf8")).toBe(compact);
     expect(existsSync(join(home, ".claude", "skills", "configure-memory", "evals"))).toBe(false);
     expect(existsSync(join(home, ".claude", "skills", "configure-memory", "scripts"))).toBe(false);
+    expect(existsSync(join(home, ".claude", "skills", "configure-memory", "formats"))).toBe(false);
     expect(existsSync(join(home, ".claude", "skills", "configure-memory", "engine"))).toBe(true);
   });
   it("uninstall removes only our hook entry", () => {
