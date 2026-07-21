@@ -109,9 +109,25 @@ empty, so always fall back to search.
   user could clear? Leave a `[blocker]` note naming what would unblock it,
   and clear blockers you resolve with a `[status]` note.
 - **Working alongside another agent** on the same project: re-run the
-  project search at natural checkpoints (task boundaries, before big
+  project read at natural checkpoints (task boundaries, before big
   decisions); append `[status]` at milestones. Freshness comes from
-  turn-boundary reads, not streaming.
+  turn-boundary reads, not streaming. Remember the date of the newest note
+  you have seen; on each re-read, act only on newer notes.
+- **Claim before you edit shared work.** In a team without a shared local
+  board, post `[claim] <files or scope>: <intent> (<agent/session>, <date>)`
+  before editing an area, and check the freshest `[claim]`s at each
+  checkpoint. Freshest date wins, like batons. Release a claim with a
+  `[status]` note when done. Do not edit inside another agent's fresh
+  claim; take another slice or leave a `[blocker]`.
+- **Address notes when they are for someone.** Write
+  `[blocker for:<agent-or-session>]` or `[context for:<agent>]` so the
+  right teammate acts; unaddressed notes are for the whole team.
+- **Several sessions, one agent identity.** Sessions of the same agent
+  (three Claude Code windows, for example) share one server `source`, so
+  the server cannot tell them apart. Sign notes with a session tag, like
+  `(claude-code/abc123, <date>)`. Session tags are informal coordination
+  labels; server `source` stays the only authenticated attribution, at
+  agent granularity.
 - Repo-derivable facts and user preferences do NOT go in project notes; a
   project carries only what dies with a session today: where work stands,
   what was decided, what's next.
