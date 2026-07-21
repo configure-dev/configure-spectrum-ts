@@ -24,6 +24,21 @@ npm install configure-spectrum
 
 New apps should install Spectrum according to [Photon's docs](https://photon.codes/docs/) before adding this package. If your package manager does not auto-install peer dependencies, install `spectrum-ts` explicitly. This package depends on `configure@^1.1.16` for the profile runtime plus hosted message URL, hosted completion, message-line registry, and sender-proof fallback helpers.
 
+## Credentials: provision from your Photon project
+
+You do not need a Configure signup to get `CONFIGURE_API_KEY`, `CONFIGURE_PUBLISHABLE_KEY`, and `CONFIGURE_AGENT`. A Spectrum app already holds `PHOTON_PROJECT_ID` and `PHOTON_PROJECT_SECRET` — exchange them once:
+
+```bash
+curl -s -X POST https://api.configure.dev/v1/photon/installations \
+  -u "$PHOTON_PROJECT_ID:$PHOTON_PROJECT_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"email": "you@example.com"}'
+```
+
+Configure verifies the pair against Photon's own `getProject` (control of the project is the proof), creates the developer account + agent + keys, and returns a paste-ready `env` block. The call is idempotent per project; the secret key is shown once (`rotate_api_key` mints a replacement). Details: [Photon Provisioning](docs/photon-provisioning.md).
+
+Integrating with a coding agent? Point it at the [Coding Agent Quickstart](docs/coding-agent-quickstart.md) — provisioning, install, and handler wiring in one pass.
+
 ## Existing Handler
 
 ```ts
