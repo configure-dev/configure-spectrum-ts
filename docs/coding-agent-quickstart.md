@@ -4,7 +4,7 @@ This page is written to be handed to a coding agent (Claude Code, Cursor, Copilo
 
 ## The prompt
 
-> Add Configure (configure.dev) personalization to my Photon Spectrum app. Follow https://raw.githubusercontent.com/configure-ai/spectrum-ts/main/docs/coding-agent-quickstart.md exactly: provision credentials from my existing PHOTON_PROJECT_ID/PHOTON_PROJECT_SECRET, write the returned env vars, install @configure-ai/spectrum-ts, and wrap my message handler with withConfigure. Don't invent endpoints or links — everything you need is in that doc.
+> Add Configure (configure.dev) personalization to my Photon Spectrum app. Follow https://raw.githubusercontent.com/configure-dev/configure-spectrum-ts/main/docs/coding-agent-quickstart.md exactly: provision credentials from my existing PHOTON_PROJECT_ID/PHOTON_PROJECT_SECRET, write the returned env vars, install configure-spectrum, and wrap my message handler with withConfigure. Don't invent endpoints or links — everything you need is in that doc.
 
 ## Steps (for the agent)
 
@@ -30,17 +30,17 @@ curl -s -X POST https://api.configure.dev/v1/photon/installations \
 ### 2. Install the adapter
 
 ```bash
-npm install @configure-ai/spectrum-ts
+npm install configure-spectrum
 ```
 
-If npm cannot find it (private preview), the repo ships a tarball: commit `configure-ai-spectrum-ts-0.1.0-preview.0.tgz` into the app and depend on it with `"@configure-ai/spectrum-ts": "file:./configure-ai-spectrum-ts-0.1.0-preview.0.tgz"`.
+The package is published to npm as `configure-spectrum` (currently 0.1.0-preview.6).
 
 ### 3. Wrap the existing message handler
 
 Do not restructure the app. Find the Spectrum message loop (`for await (const [space, message] of app.messages)` or the webhook `onMessage`) and wrap the body:
 
 ```ts
-import { withConfigure } from "@configure-ai/spectrum-ts";
+import { withConfigure } from "configure-spectrum";
 
 const configureSpectrum = withConfigure({
   apiKey: process.env.CONFIGURE_API_KEY!,
