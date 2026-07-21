@@ -20,7 +20,7 @@ Photon's own API authenticates with that pair as `Authorization: Basic base64(pr
 - an `sk_` secret key and `pk_` publishable key,
 - the hosted sign-in URL (`https://sign-in.me/{agent}`).
 
-The same endpoint serves the Photon platform when the dashboard toggle provisions on the developer's behalf. The two paths converge on the same installation row, keyed on the Photon project id.
+The same endpoint serves the Photon platform when the dashboard toggle provisions on the developer's behalf. The two paths converge on the same installation row, keyed by Photon project and Photon agent. Calls that omit `photon_agent_id` use the `default` installation.
 
 ## The exchange
 
@@ -59,7 +59,7 @@ First call (HTTP 201):
 }
 ```
 
-Every later call is an idempotent upsert on the project (HTTP 200, `created: false`): it re-verifies the credentials, refreshes the Photon-derived metadata (`photon_display_name`, `imessage_synced`), and returns the installation **without** the secret key — secret keys are stored hashed and cannot be re-shown. Lost the key? Pass `{"rotate_api_key": true}` to mint a replacement; the previous photon-issued secret key is revoked in the same transaction, so rotate and redeploy together.
+Every later call is an idempotent upsert for the same project and agent (HTTP 200, `created: false`): it re-verifies the credentials, refreshes the Photon-derived metadata (`photon_display_name`, `imessage_synced`), and returns the installation **without** the secret key — secret keys are stored hashed and cannot be re-shown. Lost the key? Pass `{"rotate_api_key": true}` to mint a replacement; the previous photon-issued secret key is revoked in the same transaction, so rotate and redeploy together.
 
 `GET /v1/photon/installations/current` with the same Basic header is the status echo. It never returns keys.
 
