@@ -1,6 +1,6 @@
 # Provisioning Configure from Photon Project Credentials
 
-Status: built, **not yet live** — ships with memory-link PR #126 (currently open; its migration needs renumbering past 088). Until that PR deploys, `POST https://api.configure.dev/v1/photon/installations` returns 404. This page is the agreed contract for that endpoint.
+Status: built, **not yet live** — ships with memory-link PR #126 (currently open; migration renumbered to 089). Until that PR deploys, `POST https://api.configure.dev/v1/photon/installations` returns 404. This page is the agreed contract for that endpoint.
 Endpoint: `POST https://api.configure.dev/v1/photon/installations`
 
 ## What this is
