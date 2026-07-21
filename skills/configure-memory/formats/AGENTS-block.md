@@ -23,7 +23,10 @@ paramount to the user. The pattern:
    transcripts. "Open my <X> project" means
    `configure_profile_read {box: "projects/<slug>"}`, falling back to
    `configure_profile_search {query: "[handoff] <slug>"}` if the box is
-   empty; the freshest `[handoff]` by date is the baton. When you finish significant work, save
+   empty; the freshest `[handoff]` by date is the baton. Box reads truncate
+   notes past ~600 chars with no marker: keep notes compact, and re-read a
+   cut-off note in full with `configure_profile_search
+   {box: "projects/<slug>", query: "<its words>", detail: "full"}`. When you finish significant work, save
    one `[handoff]` note with `box: "projects/<slug>"`: state, decisions,
    the exact next step, repo and branch, your name and the date. Other note
    types: [decision], [context], [status], [blocker] (what the work is
