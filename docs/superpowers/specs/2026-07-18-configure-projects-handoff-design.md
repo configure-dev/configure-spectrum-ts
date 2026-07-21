@@ -76,3 +76,7 @@ New page `guides/projects.md` ("Projects: work across agents"), linked from the 
 ## Non-goals (v1)
 
 Real-time push/streaming between agents; cross-agent locks or claims (classroom-style coordination is a later layer on the same box); any change to MCP tool schemas; any behavior change for non-coding agents.
+
+## Later: Configure Orgs (roadmap, Jul 20 2026)
+
+The team-scale version of this pattern: configure an org, and all of the org's agents share a common memory space alongside personal profiles, so coworkers' agents work cooperatively — shared decisions, batons, and standing context at org scope. Open design questions: org identity/membership, how org memory stays separate from each user's own trusted profile (no blurring without consent), per-member/agent permission filtering, and whether org projects are simply `projects/<slug>` boxes with an org owner. Not scheduled; after the coding-agents release.
