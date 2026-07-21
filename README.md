@@ -1,32 +1,41 @@
-# Configure SSO for Spectrum message handlers
+# Configure for Spectrum
 
-`configure-spectrum` adds Configure sign-in and profile access to an existing Photon Spectrum (`spectrum-ts`) message handler.
+`configure-spectrum` adds Configure identity, profiles, memory, and connected tools to an existing Photon Spectrum (`spectrum-ts`) message handler.
 
-It resolves the current sender before your handler runs, then provides a Configure profile runtime for the right access state. Approved users can receive personalized responses on the first generated turn. New or unlinked senders get a stable developer-scoped profile and a hosted message sign-in path.
+The adapter resolves the sender before application code runs and provides a permission-aware Configure profile runtime. Spectrum continues to own channels, providers, webhooks, messages, replies, typing, and delivery.
 
-Spectrum continues to own channels, providers, webhooks, message objects, replies, typing, and delivery. This package only adds Configure identity and profile context at the message boundary.
+## Integration Paths
 
-## Capabilities
+| Runtime owner | Integration |
+| --- | --- |
+| Photon | Native MCP integration (recommended) |
+| Your application | This SDK adapter |
 
-- **Identity context before the response.** Resolve the sender before model execution, so your first generated reply can use the right identity state.
-- **Continuity across supported channels.** When Spectrum exposes a phone-backed sender identifier, the adapter can resolve that sender to the same approved Configure user across supported channels. When a channel only exposes channel-local identifiers, the adapter falls back to a stable developer-scoped user until the sender links with Configure.
-- **One profile surface.** Your handler uses `ctx.profile` for linked Configure users and unlinked developer-scoped users, so the agent code can stay consistent while access remains permission-aware.
-- **Hosted message SSO.** Generate or send `sign-in.me` links from the message thread. Configure handles verification, consent, connector setup, agent approval, and message return behavior when Spectrum exposes a reliable target.
-- **No Spectrum replacement.** Keep your existing `Spectrum()` app, providers, webhook adapters, and message loop.
+For Photon-hosted agents, Photon requests a short-lived session from Configure for each message and attaches the returned MCP server configuration to the model call. That lifecycle belongs in the Photon runtime and is not implemented by this package. See [Native Photon integration](https://github.com/configure-dev/configure-spectrum-ts/blob/main/docs/photon-native-integration.md) for the complete platform contract.
+
+Use this package when your application owns the Spectrum message loop. It calls the Configure TypeScript SDK directly and exposes the result through the handler context. Its `profile.tools()` method returns model tool definitions; it does not create an MCP server.
+
+## What the Adapter Does
+
+- Resolves sender identity before the first model response.
+- Provides one profile interface for linked and developer-scoped users.
+- Preserves identity across channels when Spectrum provides a phone-backed sender identifier.
+- Generates hosted Configure sign-in and reconnection links.
+- Keeps Spectrum application structure, providers, and message delivery unchanged.
+
+Recognition is not authorization. A recognized sender is linked only after the user approves the agent.
 
 ## Install
-
-Existing Spectrum apps can add the adapter:
 
 ```bash
 npm install configure-spectrum
 ```
 
-New apps should install Spectrum according to [Photon's docs](https://photon.codes/docs/) before adding this package. If your package manager does not auto-install peer dependencies, install `spectrum-ts` explicitly. This package depends on `configure@^1.1.16` for the profile runtime plus hosted message URL, hosted completion, message-line registry, and sender-proof fallback helpers.
+Install Spectrum according to [Photon's documentation](https://photon.codes/docs/). `spectrum-ts` is a peer dependency. This package currently requires `configure@^1.1.16`.
 
-## Credentials: provision from your Photon project
+## Provision Configure Credentials
 
-You do not need a Configure signup to get `CONFIGURE_API_KEY`, `CONFIGURE_PUBLISHABLE_KEY`, and `CONFIGURE_AGENT`. A Spectrum app already holds `PHOTON_PROJECT_ID` and `PHOTON_PROJECT_SECRET` — exchange them once:
+A Spectrum application can provision Configure credentials from its existing Photon project credentials. No separate Configure signup is required.
 
 ```bash
 curl -s -X POST https://api.configure.dev/v1/photon/installations \
@@ -35,11 +44,15 @@ curl -s -X POST https://api.configure.dev/v1/photon/installations \
   -d '{"email": "you@example.com"}'
 ```
 
-Configure verifies the pair against Photon's own `getProject` (control of the project is the proof), creates the developer account + agent + keys, and returns a paste-ready `env` block. The call is idempotent per project; the secret key is shown once (`rotate_api_key` mints a replacement). Details: [Photon Provisioning](docs/photon-provisioning.md).
+Configure validates the credentials against Photon's `getProject` endpoint, then creates a Configure developer account, agent, secret key, and publishable key. The response includes an `env` object for the application environment.
 
-Integrating with a coding agent? Point it at the [Coding Agent Quickstart](docs/coding-agent-quickstart.md) — provisioning, install, and handler wiring in one pass.
+The request is idempotent for each Photon project and Photon agent pair. Configure returns a secret key only when it creates or rotates the key. A `503` response means the Photon integration is not enabled in that Configure environment.
 
-## Existing Handler
+See [Photon provisioning](https://github.com/configure-dev/configure-spectrum-ts/blob/main/docs/photon-provisioning.md) for the request contract, rotation behavior, and errors. For an automated SDK integration, use the [coding-agent quickstart](https://github.com/configure-dev/configure-spectrum-ts/blob/main/docs/coding-agent-quickstart.md).
+
+## Basic Integration
+
+The callback receives a `ConfigureSpectrumContext`, named `configureContext` below.
 
 ```ts
 import { withConfigure } from "configure-spectrum";
@@ -63,9 +76,9 @@ const configureSpectrum = withConfigure({
 });
 
 for await (const [space, message] of app.messages) {
-  await configureSpectrum.handle(space, message, async (ctx) => {
-    let configureReadUsed = false;
-    const tools = ctx.profile.tools({
+  await configureSpectrum.handle(space, message, async (configureContext) => {
+    let usedConfigureRead = false;
+    const tools = configureContext.profile.tools({
       connectors: ["gmail", "calendar"],
       actions: ["email.send", "calendar.create_event"],
     });
@@ -73,26 +86,26 @@ for await (const [space, message] of app.messages) {
     const reply = await runAgent({
       message,
       tools,
+      linked: configureContext.linked,
       executeTool: async (toolCall) => {
-        const result = await ctx.profile.executeTool(toolCall);
-        if (isReadBackedConfigureTool(toolCall.name)) configureReadUsed = true;
+        const result = await configureContext.profile.executeTool(toolCall);
+        if (isConfigureRead(toolCall.name)) usedConfigureRead = true;
         return result;
       },
-      linked: ctx.linked,
     });
 
     await message.reply(reply);
-    if (configureReadUsed) {
+
+    if (usedConfigureRead && configureContext.text) {
       try {
-        await ctx.profile.commit({
+        await configureContext.profile.commit({
           messages: [
-            { role: "user", content: ctx.text },
+            { role: "user", content: configureContext.text },
             { role: "assistant", content: reply },
           ],
         });
       } catch (error) {
-        console.warn("[configure]", {
-          event: "profile_commit_failed",
+        console.warn("[configure] profile commit failed", {
           errorKind: error instanceof Error ? error.name : "unknown",
         });
       }
@@ -100,54 +113,34 @@ for await (const [space, message] of app.messages) {
   });
 }
 
-function isReadBackedConfigureTool(name: string): boolean {
+function isConfigureRead(name: string): boolean {
   return name === "configure_profile_read" || name === "configure_profile_search";
 }
 ```
 
-`ctx.profile` is built from a linked Configure token when one is available, or from a developer-scoped external user before sign-in. That lets the rest of your agent use one profile runtime while Configure enforces the appropriate access boundary.
+The profile runtime uses an approved Configure token when one is available. Before sign-in, it uses a stable user scoped to the developer account. Configure enforces the corresponding access boundary in both cases.
 
-Use `ctx.profile.tools({ connectors, actions })` as the normal model-loop integration when your hosted Configure surface requested connector/action setup and your app supports those capabilities. Keep Configure tools available so the model can call `configure_profile_read` or `configure_profile_search` for overview, concrete memories, source-specific questions like "what does ChatGPT remember about me?", or details that need exact source attribution. Host-side `ctx.profile.read({ sections })` plus `profile.format()` is available for app-owned UI, inspection, or explicit context slots; it is not required for the normal model loop. After a read-backed turn, call `ctx.profile.commit()` with bounded user/assistant turn evidence.
+Use `profile.tools()` for model-controlled profile and connector access. Use `profile.read()` and `profile.format()` when the application owns a specific context slot or user interface. After a turn that reads Configure data, call `profile.commit()` with bounded user and assistant messages.
 
-Action tools, such as sending email or creating calendar events, change external state. Tool visibility means hosted/app capability, not user authorization. Expose actions when the product has requested and supports that capability; `ctx.profile.executeTool()` still fails closed when linked state, connector state, permissions, scopes, or approval state are missing. If a connector/action is unavailable, send the hosted connect, reconnect, permissions, or approval link.
+External actions, such as sending email or creating calendar events, can change user data. Expose only actions that the application supports. `profile.executeTool()` rejects requests when identity, connector state, permissions, scopes, or approval are insufficient.
 
-When `connect` sends a hosted link, `handle()` returns before the handler runs. The model does not need to decide when to produce Configure sign-in URLs.
+## Message Context
 
-Hosted links use Configure's public `sign-in.me/{agent}` surface, so the model never needs to construct Configure URLs. If your app passes `signIn.agentPhone`, that explicit app-bound line is used first. Otherwise, for Spectrum iMessage dedicated-line spaces, the adapter reads Spectrum's routed line from `space.phone` and uses it when it is a valid E.164 phone number. Shared-mode sentinels such as `shared`, blank local-mode values, and other non-phone values are ignored, so Configure falls back to the normal hosted completion path instead of receiving an unreliable return phone.
+`withConfigure().handle()` provides a `ConfigureSpectrumContext` with:
 
-In normal iMessage turns, you should not need a resolver: `space.phone` is the per-turn routed line and the adapter already uses it. `signIn.agentPhone` is for an explicit application binding or a carefully chosen fallback when your app can determine the line outside the current turn.
+- `identity`: Configure's identity result for the sender.
+- `profile`: profile reads, search, memory, model tools, and tool execution.
+- `linked`: `true` only when the sender approved this agent.
+- `recognized`: `true` when Configure recognized sender evidence; this does not grant access.
+- `subject` and `thread`: stable keys for subject and thread state.
+- `signInUrl()` and `replyWithSignIn()`: hosted sign-in helpers.
+- `reconnectUrl()` and `replyWithReconnect()`: hosted connector-recovery helpers.
 
-Photon Cloud's iMessage token endpoint, exposed by Spectrum as `cloud.issueImessageTokens(projectId, projectSecret)`, returns the active dedicated line pool plus short-lived provider tokens. It is useful for non-turn validation or single-line fallback, but it is not per-thread authority by itself. Discard tokens immediately, do not log the response, and only choose a line when there is exactly one active line or your app has a deterministic selection rule.
+The context also includes the current `space`, `message`, normalized `text`, and platform metadata. See [`ConfigureSpectrumContext`](src/types.ts) for the complete type.
 
-```ts
-import { cloud } from "spectrum-ts";
+## Sign-In Policy
 
-const e164 = (value: unknown) =>
-  typeof value === "string" && /^\+[1-9]\d{7,14}$/.test(value) ? value : undefined;
-
-const configuredLine = async () => {
-  const tokenData = await cloud.issueImessageTokens(projectId, projectSecret);
-  if (tokenData.type !== "dedicated") return undefined;
-  const lines = Object.values(tokenData.numbers)
-    .map(e164)
-    .filter((line): line is string => Boolean(line));
-  return lines.length === 1 ? lines[0] : undefined;
-};
-
-const configureSpectrum = withConfigure({
-  apiKey,
-  publishableKey,
-  agent: "your-agent",
-  store,
-  signIn: {
-    agentPhone: async (ctx) => e164(ctx.space.phone) ?? configuredLine(),
-  },
-});
-```
-
-Set `signIn.linkMode` to `"managed"` to route message sign-in through Configure's message URL API. When a return line is available, the adapter registers that line for the configured agent before requesting the URL. Configure returns the hosted fallback when signed sender proof is missing or unsupported, and reserves code-bearing links for verified message senders. The older `"auto"` value is still accepted as a compatibility alias for `"managed"`.
-
-For production visibility, attach `onEvent` and send the redacted adapter events to your own telemetry sink:
+The adapter can send a hosted sign-in link before the model runs:
 
 ```ts
 const configureSpectrum = withConfigure({
@@ -156,6 +149,103 @@ const configureSpectrum = withConfigure({
   agent,
   store,
   signIn: { linkMode: "managed" },
+  connect: {
+    mode: "intent",
+    intent: /\b(connect|link|sign[\s-]?in|login)\b/i,
+    sendOnce: true,
+    behavior: "send-and-stop",
+    message: "Connect your Configure profile: {url}",
+  },
+});
+```
+
+`connect.mode` defaults to `"manual"`. Use `"intent"` to respond to sign-in requests or `"first-message"` to require sign-in before the first model response. When the adapter sends a link with `behavior: "send-and-stop"`, it does not run the application handler for that message.
+
+Application code can also send a link directly:
+
+```ts
+if (!configureContext.linked && needsPersonalData(configureContext)) {
+  await configureContext.replyWithSignIn();
+  return;
+}
+```
+
+For a connector that requires renewed access:
+
+```ts
+await configureContext.replyWithReconnect({
+  connectors: ["gmail"],
+  message: "Reconnect Gmail so I can continue: {url}",
+});
+return;
+```
+
+Do not construct Configure URLs in application code.
+
+## Message Return
+
+Hosted links use `https://sign-in.me/{agent}`. The adapter determines whether Configure can return the user to the same message channel after sign-in.
+
+For an iMessage dedicated-line space, the adapter uses a valid E.164 number from `space.phone`. It ignores shared-mode sentinels, blank local values, and invalid phone values. Configure then uses its hosted completion page instead of attempting an unreliable message return.
+
+Set `signIn.agentPhone` only when the application has an authoritative line binding. The current message's `space.phone` remains the preferred source. Photon Cloud's `cloud.issueImessageTokens()` can validate a dedicated line pool outside a message turn, but it does not identify the line for a specific thread. Select a value only when the result is deterministic, and never log returned tokens.
+
+```ts
+import { cloud } from "spectrum-ts";
+
+const asE164 = (value: unknown) =>
+  typeof value === "string" && /^\+[1-9]\d{7,14}$/.test(value)
+    ? value
+    : undefined;
+
+const configuredLine = async () => {
+  const tokenData = await cloud.issueImessageTokens(projectId, projectSecret);
+  if (tokenData.type !== "dedicated") return undefined;
+
+  const lines = Object.values(tokenData.numbers)
+    .map(asE164)
+    .filter((line): line is string => Boolean(line));
+
+  return lines.length === 1 ? lines[0] : undefined;
+};
+
+const configureSpectrum = withConfigure({
+  apiKey,
+  publishableKey,
+  agent,
+  store,
+  signIn: {
+    linkMode: "managed",
+    agentPhone: async (configureContext) =>
+      asE164(configureContext.space.phone) ?? configuredLine(),
+  },
+});
+```
+
+With `linkMode: "managed"`, the adapter registers a valid return line before requesting the hosted message URL. Configure returns a code-bearing link only when verified sender proof is available. `"auto"` remains a compatibility alias for `"managed"`.
+
+## Persistence
+
+`store` persists adapter state between messages: sender mappings, approved Configure tokens, sign-in delivery, completion journeys, and webhook idempotency. It does not store user memories or profile data.
+
+Use the in-memory store only for local development:
+
+```ts
+const store = withConfigure.localStore();
+```
+
+It resets when the process restarts. Production applications should implement persistent storage, including `claimMessage()` for webhook idempotency and journey methods when using `messageCompleteUrl`.
+
+## Telemetry
+
+Use `onEvent` to send redacted adapter events to the application's telemetry system:
+
+```ts
+const configureSpectrum = withConfigure({
+  apiKey,
+  publishableKey,
+  agent,
+  store,
   onEvent(event) {
     console.info("[configure]", {
       event: event.event,
@@ -170,103 +260,11 @@ const configureSpectrum = withConfigure({
 });
 ```
 
-The hook is application-owned. The adapter does not send telemetry to Configure. Events include states, counts, modes, booleans, and reason codes; they intentionally omit raw phone numbers, tokens, URLs, message bodies, connector payloads, and profile facts.
+The adapter does not send these events to Configure. Events omit phone numbers, tokens, URLs, message bodies, connector payloads, and profile facts.
 
-`store` persists adapter state between messages: sender mappings, approved Configure tokens, sign-in delivery state, completion journeys, and webhook idempotency. It does not store Configure user memories or profile data. Most apps back this with the same persistence they already use for sessions, users, or webhook idempotency.
+## Webhook Integration
 
-For local development and examples:
-
-```ts
-const store = withConfigure.localStore();
-```
-
-`withConfigure.localStore()` keeps adapter state in the current process. It resets when the worker restarts.
-
-## How Resolution Works
-
-For each message, the adapter:
-
-1. Derives stable subject and thread keys from Spectrum `space` and `message` metadata.
-2. Reuses a stored Configure token when the sender has already approved this agent.
-3. Checks Configure recognition when the channel exposes phone-backed sender identifiers.
-4. Falls back to a developer-scoped external user when the sender is not linked.
-5. Builds a `ctx` object for your handler before agent logic runs.
-
-Recognition is not authorization. Treat `ctx.linked` as the signal that Configure has an approved agent token for this sender.
-
-## Handler Context
-
-`withConfigure().handle()` gives your existing handler a `ctx` object with:
-
-- `ctx.identity` - the Configure identity result for this sender.
-- `ctx.profile` - Configure profile runtime: `read()`, `search()`, `remember()`, tools, and tool execution.
-- `ctx.linked` - true only when Configure has an approved agent token.
-- `ctx.recognized` - true when Configure recognized sender evidence, even if the user has not approved this agent yet.
-- `ctx.signInUrl()` - hosted message sign-in link for the current sender.
-- `ctx.replyWithSignIn()` - convenience method for sending the hosted link in-thread.
-- `ctx.reconnectUrl({ connectors })` - hosted reconnect link for refreshing a specific app connection.
-- `ctx.replyWithReconnect({ connectors })` - convenience method for sending a reconnect link in-thread.
-- `ctx.subject` and `ctx.thread` - stable keys for subject storage and thread-level app state.
-
-## Sign-In Handoff
-
-The adapter can send hosted links before your model runs:
-
-```ts
-const configureSpectrum = withConfigure({
-  apiKey,
-  publishableKey,
-  agent,
-  store,
-  signIn: {
-    linkMode: "managed",
-  },
-  connect: {
-    mode: "intent",
-    intent: /\b(connect|link|sign[\s-]?in|login)\b/i,
-    sendOnce: true,
-    behavior: "send-and-stop",
-    message: "Connect your Configure profile: {url}",
-  },
-});
-```
-
-`connect.mode` defaults to `manual`, so the adapter does not send links unless your app opts in. Use `mode: "first-message"` if your product should require Configure sign-in before the first model response.
-
-## Message Return Behavior
-
-Developers should not need to know Configure hosted URL parameters to return a user to the same message channel after sign-in. The adapter infers that from the current Spectrum `space` and `message` when Spectrum exposes a reliable target.
-
-For iMessage dedicated-line spaces, Spectrum includes the routed sending line on `space.phone`. When no explicit `signIn.agentPhone` is configured and that value is a valid E.164 phone number, the adapter passes it to Configure for sign-in and reconnect links. In shared iMessage mode, local mode, or channels without a reliable message return target, the adapter omits the return phone and keeps the hosted Configure completion fallback.
-
-`signIn.agentPhone` is the explicit app-bound return line. It can be a string or an async resolver. Prefer the current turn's `space.phone` when available. If you call Photon Cloud's token endpoint through `cloud.issueImessageTokens()`, treat it as an active line-pool lookup, not proof of a specific turn's routed line, and choose only a deterministic valid E.164 number. Values such as `shared` are ignored rather than sent to Configure.
-
-In `linkMode: "managed"`, valid return lines are registered through Configure before the adapter asks for a message URL. If registration or message URL creation fails, the adapter omits return-phone metadata from its local fallback and keeps the hosted sign-in path usable.
-
-You can still send a link manually from application code:
-
-```ts
-if (!ctx.linked && needsPersonalData(ctx)) {
-  await ctx.replyWithSignIn();
-  return;
-}
-```
-
-When a Configure-backed tool reports that provider access needs to be refreshed, send a targeted reconnect link from application code:
-
-```ts
-await ctx.replyWithReconnect({
-  connectors: ["gmail"],
-  message: "Reconnect Gmail so I can keep helping with email: {url}",
-});
-return;
-```
-
-Reconnect links use the same hosted surface as sign-in, but they only refresh the requested app connection. In `linkMode: "managed"`, the adapter asks Configure for a message URL and accepts the plain hosted reconnect URL unless verified Spectrum sender proof allows a code-bearing link.
-
-## Webhook Composition
-
-Compose this adapter inside Spectrum's webhook adapters. Spectrum should handle raw body parsing, signature verification, and provider normalization.
+Compose the adapter inside Spectrum's webhook adapter. Spectrum remains responsible for raw-body parsing, signature verification, and provider normalization.
 
 ```ts
 import express from "express";
@@ -274,7 +272,7 @@ import { Spectrum } from "spectrum-ts";
 import { spectrum } from "@spectrum-ts/express";
 import { withConfigure } from "configure-spectrum";
 
-const app = await Spectrum({
+const spectrumApp = await Spectrum({
   webhookSecret: process.env.SPECTRUM_WEBHOOK_SECRET!,
   providers: [],
 });
@@ -290,35 +288,38 @@ const server = express();
 
 server.use(
   spectrum({
-    app,
+    app: spectrumApp,
     onMessage: async (space, message) => {
       await configureSpectrum.handle(space, message, runAgent);
     },
-  })
+  }),
 );
 ```
 
-## Production Checklist
+## Production Requirements
 
-- Use Spectrum's webhook adapters for webhook verification and raw body handling.
-- Provide a `store` implementation backed by your app's normal persistence layer.
-- Implement `claimMessage()` for webhook idempotency.
-- Implement `saveJourney()` and `consumeJourney()` before setting `messageCompleteUrl`.
-- Choose a stored-token validation policy and document it.
-- Keep `CONFIGURE_API_KEY` server-side.
-- Keep `CONFIGURE_PUBLISHABLE_KEY` browser-safe; the adapter's default plain message link does not need to expose it in the URL.
-- Pass `signIn.agentPhone` when your app has an authoritative line binding; otherwise let the adapter infer iMessage return lines from Spectrum `space.phone` when possible. Do not pass shared-mode sentinels as phone numbers.
-- Do not log tokens, phone numbers, full message bodies, or webhook headers.
-- Do not treat phone recognition as linked access unless Configure returns an approved token.
+- Keep `CONFIGURE_API_KEY` on the server.
+- Use Spectrum's webhook verification and raw-body handling.
+- Replace the local store with persistent application storage.
+- Implement webhook idempotency with `claimMessage()`.
+- Implement journey persistence before setting `messageCompleteUrl`.
+- Define a stored-token validation policy.
+- Use only authoritative E.164 return lines.
+- Do not log credentials, tokens, phone numbers, message bodies, or webhook headers.
+- Do not treat sender recognition as linked access.
 
-## Boundaries
+See [Production guidance](https://github.com/configure-dev/configure-spectrum-ts/blob/main/docs/production.md) for implementation details.
 
-- This package does not construct a Spectrum app.
-- This package does not re-export Spectrum providers, content builders, webhook adapters, or runtime APIs.
-- This package does not parse or verify Photon webhooks.
-- This package does not own your model loop, queue, retry worker, or outbound outbox.
-- `spectrum-ts` is a peer dependency. Existing apps keep their own compatible Spectrum version.
+## Package Boundaries
+
+This package does not:
+
+- Construct a Spectrum application.
+- Re-export Spectrum providers, content builders, webhook adapters, or runtime APIs.
+- Parse or verify Photon webhooks.
+- Own the model loop, queue, retry worker, or outbound outbox.
+- Implement Photon's native MCP session lifecycle.
 
 ## Stability
 
-This package is pre-1.0. APIs may change before `1.0`; breaking changes will be documented in `CHANGELOG.md`.
+This package is pre-1.0. Breaking changes before `1.0` are documented in [`CHANGELOG.md`](CHANGELOG.md).

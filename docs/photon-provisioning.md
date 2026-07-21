@@ -1,7 +1,8 @@
 # Provisioning Configure from Photon Project Credentials
 
-Status: built, **not yet live** — ships with memory-link PR #126 (currently open; migration renumbered to 089). Until that PR deploys, `POST https://api.configure.dev/v1/photon/installations` returns 404. This page is the agreed contract for that endpoint.
 Endpoint: `POST https://api.configure.dev/v1/photon/installations`
+
+Availability is environment-specific. A `503` response means the Photon integration is not enabled in that Configure deployment.
 
 ## What this is
 
@@ -19,7 +20,7 @@ Photon's own API authenticates with that pair as `Authorization: Basic base64(pr
 - an `sk_` secret key and `pk_` publishable key,
 - the hosted sign-in URL (`https://sign-in.me/{agent}`).
 
-The same endpoint serves the Photon platform when the dashboard toggle provisions on the developer's behalf. The two paths converge on the same installation row, keyed on the Photon project id.
+The same endpoint serves the Photon platform when the dashboard toggle provisions on the developer's behalf. The two paths converge on the same installation row, keyed by Photon project and Photon agent. Calls that omit `photon_agent_id` use the `default` installation.
 
 ## The exchange
 
@@ -58,7 +59,7 @@ First call (HTTP 201):
 }
 ```
 
-Every later call is an idempotent upsert on the project (HTTP 200, `created: false`): it re-verifies the credentials, refreshes the Photon-derived metadata (`photon_display_name`, `imessage_synced`), and returns the installation **without** the secret key — secret keys are stored hashed and cannot be re-shown. Lost the key? Pass `{"rotate_api_key": true}` to mint a replacement; the previous photon-issued secret key is revoked in the same transaction, so rotate and redeploy together.
+Every later call is an idempotent upsert for the same project and agent (HTTP 200, `created: false`): it re-verifies the credentials, refreshes the Photon-derived metadata (`photon_display_name`, `imessage_synced`), and returns the installation **without** the secret key — secret keys are stored hashed and cannot be re-shown. Lost the key? Pass `{"rotate_api_key": true}` to mint a replacement; the previous photon-issued secret key is revoked in the same transaction, so rotate and redeploy together.
 
 `GET /v1/photon/installations/current` with the same Basic header is the status echo. It never returns keys.
 
@@ -99,3 +100,5 @@ The body is validated strictly: unknown fields are a `400`, not silently ignored
 ## Relation to the dashboard toggle
 
 When Photon builds the Configure toggle, its backend calls this same endpoint on toggle-on and settings edits, passing the richer body (`owner_id`, `photon_agent_id`, `policy`, sign-in copy settings). A developer who provisioned from the terminal first and later flips the toggle lands on the same installation — same agent, same users, same memory. Claiming the account from the dashboard attaches a normal Configure login to it; it never creates a second account.
+
+The installation endpoint is the control-plane operation. Photon then uses the per-message session and turn endpoints described in [Native Photon integration](photon-native-integration.md).
