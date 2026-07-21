@@ -1,7 +1,8 @@
 # Provisioning Configure from Photon Project Credentials
 
-Status: built, **not yet live** — ships with memory-link PR #126 (currently open; migration renumbered to 089). Until that PR deploys, `POST https://api.configure.dev/v1/photon/installations` returns 404. This page is the agreed contract for that endpoint.
 Endpoint: `POST https://api.configure.dev/v1/photon/installations`
+
+Availability is environment-specific. A `503` response means the Photon integration is not enabled in that Configure deployment.
 
 ## What this is
 
@@ -99,3 +100,5 @@ The body is validated strictly: unknown fields are a `400`, not silently ignored
 ## Relation to the dashboard toggle
 
 When Photon builds the Configure toggle, its backend calls this same endpoint on toggle-on and settings edits, passing the richer body (`owner_id`, `photon_agent_id`, `policy`, sign-in copy settings). A developer who provisioned from the terminal first and later flips the toggle lands on the same installation — same agent, same users, same memory. Claiming the account from the dashboard attaches a normal Configure login to it; it never creates a second account.
+
+The installation endpoint is the control-plane operation. Photon then uses the per-message session and turn endpoints described in [Native Photon integration](photon-native-integration.md).
