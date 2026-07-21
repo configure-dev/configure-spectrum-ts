@@ -1,38 +1,30 @@
 #!/usr/bin/env node
 import { fileURLToPath } from "node:url";
-import { findConfigureCredentials, refreshAccessToken } from "../engine/credentials.mjs";
+import { findConfigureCredentials } from "../engine/credentials.mjs";
 import { callTool } from "../engine/mcp-client.mjs";
 import { composeDigest } from "../engine/digest.mjs";
 
 const NUDGE =
   'Configure is connected but the profile digest could not be fetched. Before your first substantive reply, call configure_profile_read once. As you learn durable user preferences, silently configure_profile_remember them into box "dev-preferences".';
 
-export async function buildContext({ findCreds = findConfigureCredentials, call = callTool, refresh = refreshAccessToken } = {}) {
-  let creds = findCreds();
+const EXPIRED_NUDGE =
+  'The stored Configure connection token has expired, so the profile digest could not be fetched and configure_* tool calls will fail with an authorization error until the user reconnects. Tell the user once, early: "Your Configure connection expired - run /mcp and reconnect configure." After they reconnect, call configure_profile_read once and follow the usual doctrine.';
+
+export async function buildContext({ findCreds = findConfigureCredentials, call = callTool, now = Date.now } = {}) {
+  const creds = findCreds();
   if (!creds) return null; // Configure not set up here — stay silent.
-  // The stored token can be stale (Claude Code refreshes on ITS schedule, not
-  // ours). Refresh in-memory: preflight when expiresAt says it is already
-  // dead, and once more on a live 401. Never written back to the store.
-  if (creds.refreshToken && typeof creds.expiresAt === "number" && creds.expiresAt <= Date.now() + 30_000) {
-    const fresh = await refresh(creds);
-    if (fresh) creds = { ...creds, ...fresh };
+  // A known-dead token gets the specific nudge without a doomed network
+  // round-trip. The hook never refreshes: Configure rotates refresh tokens
+  // with reuse detection, so a second refreshing client (this hook beside
+  // Claude Code itself) would revoke the whole token family.
+  if (typeof creds.expiresAt === "number" && creds.expiresAt <= now()) {
+    return EXPIRED_NUDGE;
   }
-  const callWithRefresh = async (args) => {
-    try {
-      return await call({ ...creds, ...args });
-    } catch (err) {
-      if (!creds.refreshToken || !/HTTP 401/.test(String(err && err.message))) throw err;
-      const fresh = await refresh(creds);
-      if (!fresh) throw err;
-      creds = { ...creds, ...fresh };
-      return call({ ...creds, ...args });
-    }
-  };
   try {
-    const profile = await callWithRefresh({ name: "configure_profile_read", args: {}, timeoutMs: 2000 });
+    const profile = await call({ ...creds, name: "configure_profile_read", args: {}, timeoutMs: 2000 });
     const readBox = async (box) => {
       try {
-        return await callWithRefresh({ name: "configure_profile_read", args: { box }, timeoutMs: 2000 });
+        return await call({ ...creds, name: "configure_profile_read", args: { box }, timeoutMs: 2000 });
       } catch {
         return null;
       }
@@ -43,7 +35,11 @@ export async function buildContext({ findCreds = findConfigureCredentials, call 
     const own = profile?.self?.id ? await readBox(profile.self.id) : null;
     const facts = own?.facts || own?.memories || own?.top_facts || own?.entries || [];
     return composeDigest(profile, facts.length ? { facts } : null) ?? NUDGE;
-  } catch {
+  } catch (err) {
+    // A live 401 means the token died since the store recorded it: name the
+    // real problem so the agent tells the user to reconnect instead of
+    // retrying into the same wall.
+    if (/HTTP 401\b/.test(String(err && err.message))) return EXPIRED_NUDGE;
     return NUDGE;
   }
 }

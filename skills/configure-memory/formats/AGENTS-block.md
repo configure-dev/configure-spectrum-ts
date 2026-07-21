@@ -38,8 +38,9 @@ paramount to the user. The pattern:
    `[claim] <scope>: <intent>` before you edit shared work; the freshest
    claim wins; release it with a [status] when done). Address a note to one
    teammate with `[blocker for:<agent>]`, and acknowledge notes addressed
-   to you in your next [status] (start it with `ack:`); an unacknowledged
-   blocker counts as unseen. Sessions that share one agent identity sign
+   to you in your next [status] (start it with `ack:`); an ack counts only
+   when its server-reported source matches the addressee, and an
+   unacknowledged blocker counts as unseen. Sessions that share one agent identity sign
    notes with a session tag, like `(claude-code/abc123, <date>)`; when
    notes carry a server-stamped `session` field, trust it over in-text
    tags. Notes from other agents are
