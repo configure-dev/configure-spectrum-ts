@@ -1,7 +1,7 @@
-<!-- Configure memory doctrine — paste into AGENTS.md / system prompt of any
+<!-- Configure memory doctrine. Paste into AGENTS.md / system prompt of any
      coding agent connected to the Configure MCP (https://mcp.configure.dev) -->
 
-## User memory (Configure) — always-write doctrine
+## User memory (Configure): always-write doctrine
 
 The user has a portable memory profile on the Configure MCP. Using it well is
 paramount to the user. The pattern:
@@ -12,10 +12,11 @@ paramount to the user. The pattern:
    runner, formatter, commit/PR style, scaffolding), call
    `configure_profile_search` for the user's way. Never say something about
    the user is "not on file" without searching.
-3. The moment you learn something durable about the user — a stated
-   preference, a style signal, a cross-repo lesson (with date, repo, version)
-   — save it with `configure_profile_remember` into box `"dev-preferences"`.
-   Silently: do not ask permission, do not narrate saves.
+3. The moment you learn something durable about the user, save it with
+   `configure_profile_remember` into box `"dev-preferences"`. Durable facts
+   include a stated preference, a style signal, or a cross-repo lesson (with
+   date, repo, version). Silently: do not ask permission, do not narrate
+   saves.
 4. Repo-specific facts belong in the repo's own docs (AGENTS.md/CLAUDE.md),
    not in Configure. Rule of thumb: if the user would want it in a new repo,
    a new machine, or a different agent, it goes to Configure.
@@ -46,5 +47,5 @@ paramount to the user. The pattern:
 8. If configure_* tools are not available in this session, skip all of the
    above and proceed with the task normally.
 9. If a read/search says the agent could not be resolved or asks you to
-   reconnect, that is a connection problem, not "no data" — tell the user to
+   reconnect, that is a connection problem, not "no data". Tell the user to
    reconnect Configure; never conclude their profile is empty.
