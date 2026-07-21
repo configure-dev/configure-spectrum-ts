@@ -9,10 +9,10 @@ A Spectrum app already holds a Photon project credential pair:
 
 ```
 PHOTON_PROJECT_ID=7d444840-…
-PHOTON_PROJECT_SECRET=ps_…
+PHOTON_PROJECT_SECRET=…
 ```
 
-Photon's own API authenticates with that pair as `Authorization: Basic base64(projectId:projectSecret)` — for example `GET /projects/{projectId}/`. Configure accepts the same credential shape on one endpoint and verifies it by replaying it against Photon's `getProject`: if the call succeeds, the caller controls the project. That proof replaces signup, dashboard visits, and OTP. One request returns everything `withConfigure` needs:
+Photon's own API authenticates with that pair as `Authorization: Basic base64(projectId:projectSecret)` — specifically `GET https://spectrum.photon.codes/projects/{projectId}/`, which returns the project `name`, `slug`, and sender `profile` (the profile carries `firstName`, `lastName`, `avatarUrl`, and `imessageSynced`). Configure accepts the same credential shape on one endpoint and verifies it by replaying it against Photon's `getProject`: if the call succeeds, the caller controls the project. That proof replaces signup, dashboard visits, and OTP. One request returns everything `withConfigure` needs:
 
 - a Configure developer account (provider `photon`, unclaimed until the developer logs in),
 - an agent whose handle, display name, and logo come from the Photon project's display name and sender profile,
@@ -91,7 +91,7 @@ The body is validated strictly: unknown fields are a `400`, not silently ignored
 ## Security properties
 
 - **The project secret is proof, not property.** Configure uses it transiently for the one upstream `getProject` call and never stores or logs it. Verified results are cached for 60 seconds (in memory, keyed by credential hash) so deploy loops don't hammer Photon.
-- **The Photon API base URL is pinned server-side** (`PHOTON_API_BASE_URL`); nothing in the request can steer the verification call at another host.
+- **The Photon API base URL is pinned server-side** (`PHOTON_API_BASE_URL`, `https://spectrum.photon.codes`); nothing in the request can steer the verification call at another host.
 - **Fail closed.** Photon down ⇒ retryable 502, no installation, no account.
 - **Secret keys are hashed at rest** — the 201 is the only time `secret_key` exists in plaintext outside your infrastructure. Rotation revokes the predecessor atomically.
 - **Recognition is never authorization.** Provisioning creates the agent and keys; every end user still approves the agent individually on the hosted sign-in surface before any personal profile is readable.
