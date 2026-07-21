@@ -8,7 +8,7 @@ This page is written to be handed to a coding agent (Claude Code, Cursor, Copilo
 
 ## Steps (for the agent)
 
-> **Availability check first:** the credential exchange in step 1 ships with memory-link PR #126 and is **not live yet** — the endpoint returns 404 today. If step 1 returns 404, do not improvise: tell the developer to get `CONFIGURE_AGENT`, `CONFIGURE_API_KEY`, and `CONFIGURE_PUBLISHABLE_KEY` from their Configure dashboard, put them in `.env`, and continue from step 2. Everything from step 2 on is live.
+> **Availability check:** If step 1 returns `503`, the Photon integration is not enabled in that Configure environment. Do not invent another endpoint. Ask the developer to obtain `CONFIGURE_AGENT`, `CONFIGURE_API_KEY`, and `CONFIGURE_PUBLISHABLE_KEY` from the Configure dashboard, add them to `.env`, and continue from step 2.
 
 ### 1. Provision Configure credentials from the Photon project
 

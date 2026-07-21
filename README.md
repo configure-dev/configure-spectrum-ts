@@ -11,7 +11,7 @@ The adapter resolves the sender before application code runs and provides a perm
 | Photon | Native MCP integration (recommended) |
 | Your application | This SDK adapter |
 
-For Photon-hosted agents, Photon requests a short-lived session from Configure for each message and attaches the returned MCP server configuration to the model call. That lifecycle belongs in the Photon runtime and is not implemented by this package.
+For Photon-hosted agents, Photon requests a short-lived session from Configure for each message and attaches the returned MCP server configuration to the model call. That lifecycle belongs in the Photon runtime and is not implemented by this package. See [Native Photon integration](https://github.com/configure-dev/configure-spectrum-ts/blob/main/docs/photon-native-integration.md) for the complete platform contract.
 
 Use this package when your application owns the Spectrum message loop. It calls the Configure TypeScript SDK directly and exposes the result through the handler context. Its `profile.tools()` method returns model tool definitions; it does not create an MCP server.
 
@@ -37,8 +37,6 @@ Install Spectrum according to [Photon's documentation](https://photon.codes/docs
 
 A Spectrum application can provision Configure credentials from its existing Photon project credentials. No separate Configure signup is required.
 
-> The provisioning endpoint is specified but not yet deployed. Until it is available, obtain `CONFIGURE_AGENT`, `CONFIGURE_API_KEY`, and `CONFIGURE_PUBLISHABLE_KEY` from the Configure dashboard.
-
 ```bash
 curl -s -X POST https://api.configure.dev/v1/photon/installations \
   -u "$PHOTON_PROJECT_ID:$PHOTON_PROJECT_SECRET" \
@@ -48,7 +46,9 @@ curl -s -X POST https://api.configure.dev/v1/photon/installations \
 
 Configure validates the credentials against Photon's `getProject` endpoint, then creates a Configure developer account, agent, secret key, and publishable key. The response includes an `env` object for the application environment.
 
-The request is idempotent by Photon project. Configure returns a secret key only when it creates or rotates the key. See [Photon provisioning](docs/photon-provisioning.md) for the request contract, rotation behavior, and errors. For an automated implementation, use the [coding-agent quickstart](docs/coding-agent-quickstart.md).
+The request is idempotent by Photon project. Configure returns a secret key only when it creates or rotates the key. A `503` response means the Photon integration is not enabled in that Configure environment.
+
+See [Photon provisioning](https://github.com/configure-dev/configure-spectrum-ts/blob/main/docs/photon-provisioning.md) for the request contract, rotation behavior, and errors. For an automated SDK integration, use the [coding-agent quickstart](https://github.com/configure-dev/configure-spectrum-ts/blob/main/docs/coding-agent-quickstart.md).
 
 ## Basic Integration
 
@@ -96,7 +96,7 @@ for await (const [space, message] of app.messages) {
 
     await message.reply(reply);
 
-    if (usedConfigureRead) {
+    if (usedConfigureRead && configureContext.text) {
       try {
         await configureContext.profile.commit({
           messages: [
@@ -308,7 +308,7 @@ server.use(
 - Do not log credentials, tokens, phone numbers, message bodies, or webhook headers.
 - Do not treat sender recognition as linked access.
 
-See [Production guidance](docs/production.md) for implementation details.
+See [Production guidance](https://github.com/configure-dev/configure-spectrum-ts/blob/main/docs/production.md) for implementation details.
 
 ## Package Boundaries
 
