@@ -46,7 +46,7 @@ curl -s -X POST https://api.configure.dev/v1/photon/installations \
 
 Configure validates the credentials against Photon's `getProject` endpoint, then creates a Configure developer account, agent, secret key, and publishable key. The response includes an `env` object for the application environment.
 
-The request is idempotent by Photon project. Configure returns a secret key only when it creates or rotates the key. A `503` response means the Photon integration is not enabled in that Configure environment.
+The request is idempotent for each Photon project and Photon agent pair. Configure returns a secret key only when it creates or rotates the key. A `503` response means the Photon integration is not enabled in that Configure environment.
 
 See [Photon provisioning](https://github.com/configure-dev/configure-spectrum-ts/blob/main/docs/photon-provisioning.md) for the request contract, rotation behavior, and errors. For an automated SDK integration, use the [coding-agent quickstart](https://github.com/configure-dev/configure-spectrum-ts/blob/main/docs/coding-agent-quickstart.md).
 

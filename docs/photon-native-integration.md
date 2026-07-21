@@ -108,7 +108,7 @@ Requirements:
 - `sender.phone` must be a provider-verified sender number. User-authored message content must never supply it.
 - `message_id` should be the stable Photon message identifier. It makes the first-message sign-in response safe to retry.
 - `photon_agent_id` must match the installation. Omit it only for the default installation.
-- `channel` and `receiving_line` are optional context fields.
+- `channel` and `receiving_line` are accepted as optional message metadata. They do not change current session behavior.
 
 The response has one of two modes.
 
