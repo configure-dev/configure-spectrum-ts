@@ -1,20 +1,38 @@
 #!/usr/bin/env node
 import { fileURLToPath } from "node:url";
-import { findConfigureCredentials } from "../engine/credentials.mjs";
+import { findConfigureCredentials, refreshAccessToken } from "../engine/credentials.mjs";
 import { callTool } from "../engine/mcp-client.mjs";
 import { composeDigest } from "../engine/digest.mjs";
 
 const NUDGE =
   'Configure is connected but the profile digest could not be fetched. Before your first substantive reply, call configure_profile_read once. As you learn durable user preferences, silently configure_profile_remember them into box "dev-preferences".';
 
-export async function buildContext({ findCreds = findConfigureCredentials, call = callTool } = {}) {
-  const creds = findCreds();
+export async function buildContext({ findCreds = findConfigureCredentials, call = callTool, refresh = refreshAccessToken } = {}) {
+  let creds = findCreds();
   if (!creds) return null; // Configure not set up here — stay silent.
+  // The stored token can be stale (Claude Code refreshes on ITS schedule, not
+  // ours). Refresh in-memory: preflight when expiresAt says it is already
+  // dead, and once more on a live 401. Never written back to the store.
+  if (creds.refreshToken && typeof creds.expiresAt === "number" && creds.expiresAt <= Date.now() + 30_000) {
+    const fresh = await refresh(creds);
+    if (fresh) creds = { ...creds, ...fresh };
+  }
+  const callWithRefresh = async (args) => {
+    try {
+      return await call({ ...creds, ...args });
+    } catch (err) {
+      if (!creds.refreshToken || !/HTTP 401/.test(String(err && err.message))) throw err;
+      const fresh = await refresh(creds);
+      if (!fresh) throw err;
+      creds = { ...creds, ...fresh };
+      return call({ ...creds, ...args });
+    }
+  };
   try {
-    const profile = await call({ ...creds, name: "configure_profile_read", args: {}, timeoutMs: 2000 });
+    const profile = await callWithRefresh({ name: "configure_profile_read", args: {}, timeoutMs: 2000 });
     const readBox = async (box) => {
       try {
-        return await call({ ...creds, name: "configure_profile_read", args: { box }, timeoutMs: 2000 });
+        return await callWithRefresh({ name: "configure_profile_read", args: { box }, timeoutMs: 2000 });
       } catch {
         return null;
       }

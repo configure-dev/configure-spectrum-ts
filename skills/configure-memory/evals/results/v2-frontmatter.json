@@ -1,0 +1,61 @@
+{
+  "label": "v2-frontmatter",
+  "shouldFirePassPct": null,
+  "shouldNotFirePassPct": 100,
+  "results": [
+    {
+      "group": "shouldNotFire",
+      "id": "explain-regex",
+      "fired": false,
+      "informed": false,
+      "pass": true,
+      "calls": [],
+      "finalText": "This regex validates a password-style string. Here's the breakdown:\n\n```\n^(?=.*[a-z])(?=.*[A-Z]).{8,}$\n```\n\n| Part | Meaning |\n|------|---------|\n| `^` | Start of string |\n| `(?=.*[a-z])` | **Lookahead**: assert there's at least one lowercase letter somewhere ahead |\n| `(?=.*[A-Z])` | **Lookahead**: assert there's at least one uppercase letter somewhere ahead |\n| `.{8,}` | Match 8 or more of any character (except newline) |\n| `$` | End of string |\n\n**In plain English:** the string must be **at l"
+    },
+    {
+      "group": "shouldNotFire",
+      "id": "fix-type",
+      "fired": false,
+      "informed": false,
+      "pass": true,
+      "calls": [],
+      "finalText": "This is a general TypeScript concept question, so let me explain it directly.\n\n## What `Property 'x' does not exist on type 'Y'` means\n\nTypeScript is telling you: **you're trying to access a property (`x`) that isn't part of the known shape of the value you have (type `Y`).** TypeScript tracks what properties every value is allowed to have, and when you reach for one it can't guarantee exists, it stops you at compile time rather than letting you hit `undefined` at runtime.\n\n### Common causes\n\n**"
+    },
+    {
+      "group": "shouldNotFire",
+      "id": "explain-rebase",
+      "fired": false,
+      "informed": false,
+      "pass": true,
+      "calls": [],
+      "finalText": "Both `git merge` and `git rebase` integrate changes from one branch into another. The difference is **how** they do it and what history they leave behind.\n\n## `git merge`\n\nCombines two branches by creating a new **merge commit** that ties their histories together.\n\n```\n      A---B---C  feature\n     /         \\\nD---E---F---G---H  main   ← H is the merge commit\n```\n\n- History is **preserved exactly** as it happened — non-destructive.\n- The merge commit has two parents, recording that a branch was "
+    },
+    {
+      "group": "shouldNotFire",
+      "id": "algo",
+      "fired": false,
+      "informed": false,
+      "pass": true,
+      "calls": [],
+      "finalText": "```python\ndef fib(n):\n    a, b = 0, 1\n    for _ in range(n):\n        a, b = b, a + b\n    return a\n```\n\n`fib(0)` → 0, `fib(1)` → 1, `fib(10)` → 55."
+    },
+    {
+      "group": "shouldNotFire",
+      "id": "read-code",
+      "fired": false,
+      "informed": false,
+      "pass": true,
+      "calls": [],
+      "finalText": "The file already existed containing `hello`, so it already matches what you asked for.\n\nContents of `hello.txt` (read back):\n\n```\nhello\n```"
+    },
+    {
+      "group": "shouldNotFire",
+      "id": "mech-edit",
+      "fired": false,
+      "informed": false,
+      "pass": true,
+      "calls": [],
+      "finalText": "Done. `notes.md` now contains three lines, each reading `color` — written first with `colour` three times, then all occurrences replaced with `color`."
+    }
+  ]
+}

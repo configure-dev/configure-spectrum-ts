@@ -16,7 +16,7 @@ export async function callTool({ serverUrl, accessToken, name, args = {}, fetchI
     params: {
       protocolVersion: "2025-03-26",
       capabilities: {},
-      clientInfo: { name: "configure-memory-hook", version: "2.0.0" },
+      clientInfo: { name: "configure-memory-hook", version: "2.1.0" },
     },
   });
   if (!init.ok) throw new Error(`initialize HTTP ${init.status}`);

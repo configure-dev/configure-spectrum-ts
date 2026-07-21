@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { findConfigureCredentials } from "../../skills/configure-memory/engine/credentials.mjs";
+import { findConfigureCredentials, refreshAccessToken } from "../../skills/configure-memory/engine/credentials.mjs";
 
 const dump = JSON.stringify({
   mcpOAuth: {
@@ -26,5 +26,44 @@ describe("findConfigureCredentials", () => {
     expect(findConfigureCredentials({ env: {}, keychainDump: "{}" })).toBeNull();
     expect(findConfigureCredentials({ env: {}, keychainDump: "not json" })).toBeNull();
     expect(findConfigureCredentials({ env: {}, keychainDump: null })).toBeNull();
+  });
+});
+
+describe("refresh material", () => {
+  it("carries refreshToken/clientId/expiresAt/tokenUrl from the store", () => {
+    const d = JSON.stringify({ mcpOAuth: { "configure|1": {
+      serverName: "configure", serverUrl: "https://mcp.configure.dev",
+      accessToken: "tok", refreshToken: "rt_1", clientId: "client_1", expiresAt: 1753000000000,
+    } } });
+    const c = findConfigureCredentials({ env: {}, keychainDump: d });
+    expect(c?.refreshToken).toBe("rt_1");
+    expect(c?.clientId).toBe("client_1");
+    expect(c?.expiresAt).toBe(1753000000000);
+    expect(c?.tokenUrl).toBe("https://api.configure.dev/oauth/token");
+  });
+});
+
+describe("refreshAccessToken", () => {
+  it("posts a form-encoded refresh grant with the MCP resource and returns the new token", async () => {
+    let captured: { url?: string; body?: string; contentType?: string } = {};
+    const fetchImpl = (async (url: any, init: any) => {
+      captured = { url: String(url), body: String(init.body), contentType: init.headers["content-type"] };
+      return { ok: true, json: async () => ({ access_token: "fresh_tok" }) };
+    }) as any;
+    const out = await refreshAccessToken({ refreshToken: "rt_1", clientId: "client_1", fetchImpl });
+    expect(out).toEqual({ accessToken: "fresh_tok" });
+    expect(captured.url).toBe("https://api.configure.dev/oauth/token");
+    expect(captured.contentType).toBe("application/x-www-form-urlencoded");
+    const params = new URLSearchParams(captured.body);
+    expect(params.get("grant_type")).toBe("refresh_token");
+    expect(params.get("refresh_token")).toBe("rt_1");
+    expect(params.get("client_id")).toBe("client_1");
+    expect(params.get("resource")).toBe("https://mcp.configure.dev");
+  });
+  it("fails soft: null on HTTP error, thrown fetch, missing token, or missing material", async () => {
+    expect(await refreshAccessToken({ refreshToken: "rt", clientId: "c", fetchImpl: (async () => ({ ok: false })) as any })).toBeNull();
+    expect(await refreshAccessToken({ refreshToken: "rt", clientId: "c", fetchImpl: (async () => { throw new Error("net"); }) as any })).toBeNull();
+    expect(await refreshAccessToken({ refreshToken: "rt", clientId: "c", fetchImpl: (async () => ({ ok: true, json: async () => ({}) })) as any })).toBeNull();
+    expect(await refreshAccessToken({ clientId: "c" } as any)).toBeNull();
   });
 });
