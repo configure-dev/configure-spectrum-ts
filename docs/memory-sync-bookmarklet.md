@@ -23,18 +23,30 @@ ChatGPT / Claude / Gemini mobile apps.
 3. User taps it → browser opens …/m/<url-encoded memory> → Configure saves it.
 ```
 
-**What was learned in testing (why the prompt is worded this way):** assistants
-printed the memory list every time and were willing to assemble the link — the
-*only* thing that made them refuse was a destination that looked like a
-third-party capture sink (a `webhook.site` URL). One assistant said explicitly it
-would build the link once the user confirmed it was their own endpoint. So the
-prompt (a) points at the first-party hosted origin and (b) states plainly that the
-link is the user's own profile endpoint. With a real `sign-in.me` origin this reads
-as legitimate and the refusal goes away; a raw capture host will still be refused.
+**What was learned in testing on real ChatGPT (this is the important part):**
+ChatGPT stated its boundary directly — it will **not** reach into its hidden
+saved-memory / cross-conversation context and turn that into an outbound link (the
+anti-exfiltration guardrail). But it **will** take memory the user brings into the
+chat, percent-encode it, and assemble a tap-link to a base URL the user provides —
+and it did exactly that, producing a working `…/from/chatgpt/m/<encoded>` link.
 
-> Reliability: verified against Claude-family models; ChatGPT and Gemini differ and
-> should be confirmed on-device. It remains best-effort (the model curates what it
-> prints) — pair with the paste-to-textarea fallback for a guaranteed path.
+So the reliable flow on ChatGPT is **user-provided memory → assistant builds the
+link**, not "assistant, dump your memory into a link." The user gets their memory
+into the chat once (open the assistant's **Settings → Personalization → Memory**,
+copy it, paste it into the prompt's placeholder); the assistant does the encode +
+link; the user taps.
+
+Because the user has to bring the memory in anyway, note that for the *saved-memory*
+case a plain **paste-into-a-Configure-textarea** (POST `/{token}/ingest`) is just as
+little work and fully reliable — the tap-link's real advantage is exporting context
+that is *already in a live chat*. Do not try to make the assistant surface its
+hidden memory and then link it: that is the exact boundary ChatGPT drew and the
+exfiltration pattern the guardrail exists for.
+
+> Reliability: the link-building step is confirmed on real ChatGPT; behavior still
+> varies by model/version, so confirm on-device. Best-effort by nature — pair with
+> the paste-to-textarea path for a guaranteed fallback, and the connector for a
+> genuinely zero-copy experience.
 
 ---
 

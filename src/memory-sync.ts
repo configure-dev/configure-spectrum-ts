@@ -780,19 +780,21 @@ function kickoffPrompt(saveBase: string): string {
 }
 
 function tapLinkPrompt(saveBase: string): string {
-  // The mobile one-paste flow. In testing, assistants happily print the memory
-  // list and will build a "tap to save" link too — the only thing that made them
-  // refuse was a destination that looked like a third-party capture sink
-  // (e.g. webhook.site). A first-party hosted origin plus a plain statement that
-  // it is the user's own profile clears that. The model only PRINTS the link; the
-  // user's tap is the send.
+  // The mobile one-paste flow, worded to what assistants (incl. real ChatGPT)
+  // actually accept. ChatGPT will NOT reach into its hidden saved-memory and turn
+  // it into an outbound link — but it WILL take memory the user brings into the
+  // chat, percent-encode it, and build a tap-link to the user's own endpoint. So
+  // the user pastes their memory (from the assistant's Settings > Personalization
+  // > Memory) into the placeholder, and the assistant assembles the link. The
+  // model only PRINTS the link; the user's tap is the send.
   return [
-    `List everything you remember about me — my preferences, the projects and tools`,
-    `I've mentioned, and other everyday details — one item per line (skip anything`,
-    `sensitive like passwords or codes). Then help me save them to my own profile:`,
-    `percent-encode those lines (spaces as %20, newlines as %0A), append them to my`,
-    `personal Configure link below, and show me the finished link as one tappable`,
-    `link so I can save them. This link is my own Configure profile endpoint.`,
+    `Here are my own notes to save to my Configure profile (my data — to get them,`,
+    `open Settings > Personalization > Memory and copy them in place of the line`,
+    `below, one item per line):`,
+    `\n<PASTE YOUR MEMORIES HERE, one per line>\n`,
+    `Percent-encode those lines (spaces as %20, newlines as %0A), append them to my`,
+    `own Configure profile link below, and show me the finished result as one`,
+    `tappable link so I can save them:`,
     `${saveBase}/`,
   ].join(" ");
 }
