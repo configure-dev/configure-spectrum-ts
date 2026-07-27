@@ -1,5 +1,34 @@
 export { withConfigure } from "./adapter.js";
 
+export {
+  createMemorySync,
+  commitMemories,
+  parseMemories,
+  reassembleChunks,
+  localMemorySyncStore,
+  MEMORY_SYNC_PROVIDERS,
+} from "./memory-sync.js";
+
+export type {
+  MemorySync,
+  MemorySyncOptions,
+  MemorySyncSource,
+  MemorySyncStore,
+  MemorySyncTokenRecord,
+  MemorySyncChunk,
+  MemorySyncLimits,
+  MemorySyncIssueInput,
+  MemorySyncTicket,
+  MemorySyncSignInUrlInput,
+  MemorySyncCompleteSignInInput,
+  MemorySyncCommitInput,
+  MemorySyncCommitResult,
+  MemorySyncIdentity,
+  MemorySyncHttpRequest,
+  MemorySyncHttpResponse,
+  ParsedMemories,
+} from "./memory-sync.js";
+
 export type {
   ConfigureSpectrum,
   ConfigureSpectrumFactory,

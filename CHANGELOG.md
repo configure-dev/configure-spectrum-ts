@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Adds **Memory Sync** (`createMemorySync`): a framework-agnostic building block that lets a signed-in user export the memory a consumer assistant (ChatGPT, Claude, ...) saved about them into their Configure profile by pasting one link — no connector, no copy/paste. The assistant opens `/{token}/m/<url-encoded-memories>` with its normal web tool; the server resolves the token to the user and writes with `profile.commit()`. Includes SSO wiring (`signInUrl` / `completeSignIn`), chunk+commit and POST ingest fallbacks, a generated `llms.txt`, `localMemorySyncStore`, and the `examples/memory-sync-server` example. Exposed from the package root along with the `MemorySync*` types.
 - Clarifies that Spectrum `space.phone` is the preferred turn-level iMessage return line, while Photon Cloud `issueImessageTokens()` is an active line-pool lookup for non-turn fallback or validation, not per-thread authority.
 
 ## 0.1.0-preview.6 - 2026-07-03
