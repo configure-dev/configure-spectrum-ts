@@ -47,6 +47,12 @@ export interface MemorySyncTokenRecord {
   source: MemorySyncSource;
   /** Optional human label (e.g. the agent/display name). */
   label?: string;
+  /**
+   * Where to send the browser after a successful save via a GET (the tap-link /
+   * bookmarklet flow) — typically back into the user's onboarding. `memory_synced`
+   * and `source` are appended as query params.
+   */
+  redirectUrl?: string;
   createdAt: string;
   expiresAt: string;
   /** Last time memory was committed with this token. */
@@ -109,6 +115,8 @@ export interface MemorySyncOptions {
   basePath?: string;
   /** Token lifetime in milliseconds. Default 30 minutes. */
   tokenTtlMs?: number;
+  /** Default onboarding redirect for GET saves when `issue` doesn't set one. */
+  defaultRedirectUrl?: string;
 
   limits?: MemorySyncLimits;
 
@@ -123,6 +131,8 @@ export interface MemorySyncIssueInput {
   externalId?: string;
   source?: MemorySyncSource;
   label?: string;
+  /** Onboarding URL to redirect the browser to after a successful GET save. */
+  redirectUrl?: string;
 }
 
 export interface MemorySyncTicket {
@@ -204,6 +214,8 @@ export interface MemorySyncCommitResult {
   received: number;
   source: MemorySyncSource;
   reason?: string;
+  /** Onboarding redirect bound to the token, for GET (browser) save flows. */
+  redirectUrl?: string;
 }
 
 export interface MemorySyncHttpRequest {
@@ -218,6 +230,8 @@ export interface MemorySyncHttpResponse {
   status: number;
   contentType: string;
   body: string;
+  /** Extra response headers (e.g. `location` for a redirect). */
+  headers?: Record<string, string>;
 }
 
 export interface MemorySync {
@@ -288,12 +302,14 @@ export function createMemorySync(options: MemorySyncOptions): MemorySync {
     const token = mintToken();
     const createdAt = now();
     const expiresAt = new Date(createdAt.getTime() + ttlMs);
+    const redirectUrl = input.redirectUrl ?? options.defaultRedirectUrl;
     const record: MemorySyncTokenRecord = {
       token,
       ...(input.configureToken ? { configureToken: input.configureToken } : {}),
       ...(input.externalId ? { externalId: input.externalId } : {}),
       source,
       ...(input.label ? { label: input.label } : {}),
+      ...(redirectUrl ? { redirectUrl } : {}),
       createdAt: createdAt.toISOString(),
       expiresAt: expiresAt.toISOString(),
     };
@@ -381,7 +397,14 @@ export function createMemorySync(options: MemorySyncOptions): MemorySync {
       committedMemoryCount: (record.committedMemoryCount ?? 0) + committed,
     });
 
-    return { ok: true, status: 200, committed, received, source };
+    return {
+      ok: true,
+      status: 200,
+      committed,
+      received,
+      source,
+      ...(record.redirectUrl ? { redirectUrl: record.redirectUrl } : {}),
+    };
   }
 
   async function bufferChunk(token: string, seq: number, data: string): Promise<MemorySyncHttpResponse> {
@@ -397,7 +420,11 @@ export function createMemorySync(options: MemorySyncOptions): MemorySync {
     return json(200, { ok: true, seq, buffered: existing.length + 1 });
   }
 
-  async function commitBufferedChunks(token: string, source?: MemorySyncSource): Promise<MemorySyncHttpResponse> {
+  async function commitBufferedChunks(
+    token: string,
+    source?: MemorySyncSource,
+    method = "POST"
+  ): Promise<MemorySyncHttpResponse> {
     const chunks = await store.readChunks(token);
     if (chunks.length === 0) {
       return json(422, { ok: false, error: "no_chunks" });
@@ -405,9 +432,7 @@ export function createMemorySync(options: MemorySyncOptions): MemorySync {
     const reassembled = reassembleChunks(chunks);
     const result = await commit({ token, payload: reassembled, source });
     if (result.ok) await store.clearChunks(token);
-    return json(result.status, result.ok
-      ? { ok: true, committed: result.committed, received: result.received, source: result.source }
-      : { ok: false, error: result.reason, received: result.received });
+    return saveResponse(result, method);
   }
 
   async function status(token: string): Promise<MemorySyncHttpResponse> {
@@ -469,17 +494,13 @@ export function createMemorySync(options: MemorySyncOptions): MemorySync {
     if (action === "ingest") {
       if (method === "POST") {
         const result = await commit({ token, payload: request.body, source });
-        return json(result.status, result.ok
-          ? { ok: true, committed: result.committed, received: result.received, source: result.source }
-          : { ok: false, error: result.reason, received: result.received });
+        return saveResponse(result, method);
       }
       if (method === "GET") {
         const data = query.data ?? query.d;
         if (data === undefined) return json(422, { ok: false, error: "missing_data" });
         const result = await commit({ token, payload: data, source });
-        return json(result.status, result.ok
-          ? { ok: true, committed: result.committed, received: result.received, source: result.source }
-          : { ok: false, error: result.reason, received: result.received });
+        return saveResponse(result, method);
       }
       return json(405, { ok: false, error: "method_not_allowed" });
     }
@@ -497,9 +518,7 @@ export function createMemorySync(options: MemorySyncOptions): MemorySync {
         : inlineData;
       if (payload === undefined) return json(422, { ok: false, error: "missing_data" });
       const result = await commit({ token, payload, source });
-      return json(result.status, result.ok
-        ? { ok: true, committed: result.committed, received: result.received, source: result.source }
-        : { ok: false, error: result.reason, received: result.received });
+      return saveResponse(result, method);
     }
 
     // GET  /{token}/chunk?seq=&data=
@@ -522,7 +541,7 @@ export function createMemorySync(options: MemorySyncOptions): MemorySync {
     // GET|POST /{token}/commit  (reassemble buffered chunks -> commit)
     if (action === "commit") {
       if (method !== "GET" && method !== "POST") return json(405, { ok: false, error: "method_not_allowed" });
-      return commitBufferedChunks(token, source);
+      return commitBufferedChunks(token, source, method);
     }
 
     return json(404, { ok: false, error: "not_found" });
@@ -542,7 +561,7 @@ export function createMemorySync(options: MemorySyncOptions): MemorySync {
     const response = await handle({ method: request.method, path, query, body });
     return new Response(response.body, {
       status: response.status,
-      headers: { "content-type": response.contentType },
+      headers: { "content-type": response.contentType, ...(response.headers ?? {}) },
     });
   }
 
@@ -709,6 +728,34 @@ function normalizeBasePath(basePath: string): string {
 
 function json(status: number, body: unknown): MemorySyncHttpResponse {
   return { status, contentType: "application/json; charset=utf-8", body: JSON.stringify(body) };
+}
+
+function redirectResponse(location: string): MemorySyncHttpResponse {
+  return { status: 302, contentType: "text/plain; charset=utf-8", body: "", headers: { location } };
+}
+
+function withSyncedParams(url: string, count: number, source: MemorySyncSource): string {
+  try {
+    const u = new URL(url);
+    u.searchParams.set("memory_synced", String(count));
+    if (source) u.searchParams.set("source", String(source));
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
+
+/**
+ * Shape a save result: on a successful GET (the tap-link / bookmarklet browser
+ * flow) with a bound onboarding redirect, 302 back to onboarding; otherwise JSON.
+ */
+function saveResponse(result: MemorySyncCommitResult, method: string): MemorySyncHttpResponse {
+  if (result.ok && method === "GET" && result.redirectUrl) {
+    return redirectResponse(withSyncedParams(result.redirectUrl, result.committed, result.source));
+  }
+  return json(result.status, result.ok
+    ? { ok: true, committed: result.committed, received: result.received, source: result.source }
+    : { ok: false, error: result.reason, received: result.received });
 }
 
 function text(status: number, body: string): MemorySyncHttpResponse {

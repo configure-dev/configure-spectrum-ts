@@ -275,6 +275,31 @@ describe("createMemorySync ingest routes", () => {
     expect(calls.find((c) => c.pathname === "/v1/profile/commit")?.body.memories).toEqual(["solo fact"]);
   });
 
+  it("redirects a GET save back to onboarding when a redirectUrl is bound", async () => {
+    const store = localMemorySyncStore();
+    const { fetchFn } = captureFetch();
+    const sync = createMemorySync({ ...baseOptions, store, fetch: fetchFn, randomToken: () => "mst_rd" });
+    await sync.issue({ configureToken: "agent-token", source: "chatgpt", redirectUrl: "https://app.configure.dev/onboarding/step3" });
+
+    const res = await sync.handle({ method: "GET", path: "/mst_rd/from/chatgpt/m/likes%20tea%0Auses%20vim" });
+    expect(res.status).toBe(302);
+    const location = res.headers?.location ?? "";
+    expect(location).toContain("https://app.configure.dev/onboarding/step3");
+    expect(location).toContain("memory_synced=2");
+    expect(location).toContain("source=chatgpt");
+  });
+
+  it("returns JSON (not a redirect) for a POST ingest even when redirectUrl is set", async () => {
+    const store = localMemorySyncStore();
+    const { fetchFn } = captureFetch();
+    const sync = createMemorySync({ ...baseOptions, store, fetch: fetchFn, randomToken: () => "mst_rd2", defaultRedirectUrl: "https://app.configure.dev/onboarding" });
+    await sync.issue({ configureToken: "agent-token" });
+
+    const res = await sync.handle({ method: "POST", path: "/mst_rd2/ingest", body: { memories: ["x fact"] } });
+    expect(res.status).toBe(200);
+    expect(JSON.parse(res.body)).toMatchObject({ ok: true, committed: 1 });
+  });
+
   it("rejects unknown and expired tokens", async () => {
     const store = localMemorySyncStore();
     const { fetchFn } = captureFetch();
