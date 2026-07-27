@@ -100,6 +100,8 @@ describe("createMemorySync.issue", () => {
     expect(ticket.instructionsUrl).toBe("https://sign-in.me/sync/mst_fixed/llms.txt");
     expect(ticket.ingestUrl).toBe("https://sign-in.me/sync/mst_fixed/ingest");
     expect(ticket.saveUrlTemplate).toBe("https://sign-in.me/sync/mst_fixed/m/<url-encoded-memories>");
+    expect(ticket.providerSaveUrls.chatgpt).toBe("https://sign-in.me/sync/mst_fixed/from/chatgpt/m/");
+    expect(ticket.providerSaveUrls.claude).toBe("https://sign-in.me/sync/mst_fixed/from/claude/m/");
     expect(ticket.expiresAt).toBe("2026-07-27T00:01:00.000Z");
     expect(ticket.prompt).toContain("https://sign-in.me/sync/mst_fixed/llms.txt");
 
@@ -114,14 +116,21 @@ describe("createMemorySync.issue", () => {
 });
 
 describe("createMemorySync.instructions", () => {
-  it("leads with the path-fetch pattern and includes fallbacks", () => {
+  it("leads with the provider path-fetch pattern and includes fallbacks", () => {
     const sync = createMemorySync({ ...baseOptions, store: localMemorySyncStore() });
     const body = sync.instructions({ token: "mst_abc", source: "chatgpt" });
-    expect(body).toContain("https://sign-in.me/sync/mst_abc/m/<URL-ENCODED-MEMORY-TEXT>");
-    expect(body).toContain("https://sign-in.me/sync/mst_abc/m/likes%20tea%0Abased%20in%20NYC");
-    expect(body).toContain("https://sign-in.me/sync/mst_abc/chunk?seq=0&data=");
-    expect(body).toContain("https://sign-in.me/sync/mst_abc/commit");
+    // a known provider routes through /from/<provider>/ so it lands in that box
+    expect(body).toContain("https://sign-in.me/sync/mst_abc/from/chatgpt/m/<URL-ENCODED-MEMORY-TEXT>");
+    expect(body).toContain("https://sign-in.me/sync/mst_abc/from/chatgpt/m/likes%20tea%0Abased%20in%20NYC");
+    expect(body).toContain("https://sign-in.me/sync/mst_abc/from/chatgpt/chunk?seq=0&data=");
+    expect(body).toContain("https://sign-in.me/sync/mst_abc/from/chatgpt/commit");
     expect(body).toContain('"source":"chatgpt"');
+  });
+
+  it("uses the plain path when the source is not a known provider", () => {
+    const sync = createMemorySync({ ...baseOptions, store: localMemorySyncStore() });
+    const body = sync.instructions({ token: "mst_abc" });
+    expect(body).toContain("https://sign-in.me/sync/mst_abc/m/<URL-ENCODED-MEMORY-TEXT>");
   });
 
   it("asks for a personal link when no token is bound", () => {
@@ -198,6 +207,24 @@ describe("createMemorySync ingest routes", () => {
       "likes tea",
       "based in NYC",
     ]);
+  });
+
+  it("records the provider from a /from/{provider}/m/ route as the source", async () => {
+    const store = localMemorySyncStore();
+    const { fetchFn, calls } = captureFetch();
+    const sync = createMemorySync({ ...baseOptions, store, fetch: fetchFn, randomToken: () => "mst_prov" });
+    await sync.issue({ configureToken: "agent-token" });
+
+    const chatgpt = await sync.handle({ method: "GET", path: "/mst_prov/from/chatgpt/m/likes%20tea" });
+    expect(JSON.parse(chatgpt.body)).toMatchObject({ ok: true, committed: 1, source: "chatgpt" });
+
+    const claude = await sync.handle({ method: "GET", path: "/mst_prov/from/claude/m/uses%20vim" });
+    expect(JSON.parse(claude.body)).toMatchObject({ ok: true, committed: 1, source: "claude" });
+
+    const committed = calls.filter((c) => c.pathname === "/v1/profile/commit");
+    expect(committed).toHaveLength(2);
+    expect(committed[0]?.body.memories).toEqual(["likes tea"]);
+    expect(committed[1]?.body.memories).toEqual(["uses vim"]);
   });
 
   it("treats extra path segments after /m/ as separate memories", async () => {

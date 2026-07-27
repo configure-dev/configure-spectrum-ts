@@ -115,6 +115,7 @@ export function handleSync(request: Request): Promise<Response> {
 | Method + path | Purpose |
 | --- | --- |
 | `GET /{token}/m/<memory>` | **primary** — memory appended in the path, saved immediately |
+| `GET /{token}/from/{provider}/m/<memory>` | same, tagged with the source provider (chatgpt, claude, …) |
 | `GET /{token}/chunk?seq=&data=` | buffer one slice of a long memory |
 | `GET \| POST /{token}/commit` | reassemble buffered slices → save |
 | `POST /{token}/ingest` | JSON `{ memories }` / `{ text }` (connectors/tools) |
@@ -124,6 +125,16 @@ export function handleSync(request: Request): Promise<Response> {
 
 Every route resolves `{token}` to the bound Configure identity and writes with
 `profile.commit({ memories })`. An unknown token is `404`; an expired one is `410`.
+
+### Knowing which assistant it came from (provider boxes)
+
+Configure files memory into **boxes** (shelves). Imported memory lives in a
+per-provider source box — `imports/chatgpt`, `imports/claude`, `imports/gemini`,
+`imports/grok`. The `/from/{provider}/…` route (and per-provider links on the
+ticket, `ticket.providerSaveUrls`) carries the provider through as the write
+`source`, so ChatGPT memory and Claude memory land in the right box and stay
+distinguishable. Give the user the provider-specific link for the assistant they
+are pasting into.
 
 ## The paste + the instructions
 

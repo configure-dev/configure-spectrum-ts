@@ -6,6 +6,7 @@ export {
   parseMemories,
   reassembleChunks,
   localMemorySyncStore,
+  MEMORY_SYNC_PROVIDERS,
 } from "./memory-sync.js";
 
 export type {

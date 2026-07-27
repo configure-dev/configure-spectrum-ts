@@ -32,6 +32,9 @@ import type { ProfileRuntime } from "./types.js";
 
 export type MemorySyncSource = "chatgpt" | "claude" | "gemini" | "grok" | "generic" | (string & {});
 
+/** Providers Configure recognizes as import sources (filed under `imports/<provider>`). */
+export const MEMORY_SYNC_PROVIDERS = ["chatgpt", "claude", "gemini", "grok"] as const;
+
 /** A stored, user-bound sync grant. */
 export interface MemorySyncTokenRecord {
   /** Opaque sync token (the `{token}` in the sync URL). */
@@ -137,6 +140,11 @@ export interface MemorySyncTicket {
   commitUrl: string;
   /** Path-append template: `.../sync/{token}/m/<url-encoded memories>`. */
   saveUrlTemplate: string;
+  /**
+   * Provider-specific save prefixes so the source is known and filed into that
+   * provider's box, e.g. `{ chatgpt: ".../sync/{token}/from/chatgpt/m/" }`.
+   */
+  providerSaveUrls: Record<MemorySyncSource, string>;
   expiresAt: string;
   /** Ready-to-paste kickoff prompt for the user. */
   prompt: string;
@@ -236,6 +244,10 @@ export function createMemorySync(options: MemorySyncOptions): MemorySync {
 
   function links(token: string) {
     const syncUrl = `${origin}${basePath}/${token}`;
+    const providerSaveUrls: Record<string, string> = {};
+    for (const provider of MEMORY_SYNC_PROVIDERS) {
+      providerSaveUrls[provider] = `${syncUrl}/from/${provider}/m/`;
+    }
     return {
       syncUrl,
       instructionsUrl: `${syncUrl}/llms.txt`,
@@ -243,6 +255,7 @@ export function createMemorySync(options: MemorySyncOptions): MemorySync {
       chunkUrl: `${syncUrl}/chunk`,
       commitUrl: `${syncUrl}/commit`,
       saveUrlTemplate: `${syncUrl}/m/<url-encoded-memories>`,
+      providerSaveUrls,
     };
   }
 
@@ -399,12 +412,24 @@ export function createMemorySync(options: MemorySyncOptions): MemorySync {
 
     const token = segments[0];
     if (!token) return json(404, { ok: false, error: "not_found" });
-    const action = segments[1];
 
-    // GET /{token}/llms.txt
+    // Optional provider prefix: /{token}/from/{provider}/... tells us which
+    // assistant the memory came from (chatgpt, claude, ...) so it can be filed
+    // into that provider's box. Splice it out so the rest of the router is
+    // provider-agnostic, and use it as the source when committing.
+    let routeSegments = segments;
+    let routeProvider: MemorySyncSource | undefined;
+    if (segments[1] === "from" && segments[2]) {
+      routeProvider = segments[2];
+      routeSegments = [token, ...segments.slice(3)];
+    }
+    const action = routeSegments[1];
+    const source = routeProvider ?? sourceOf(query, request.body);
+
+    // GET /{token}/llms.txt (or /{token}/from/{provider}/llms.txt)
     if (action === "llms.txt") {
       if (method !== "GET") return json(405, { ok: false, error: "method_not_allowed" });
-      return text(200, instructions({ token, source: sourceOf(query) }));
+      return text(200, instructions({ token, source: source ?? sourceOf(query) }));
     }
 
     // GET /{token}  or  /{token}/status
@@ -417,7 +442,7 @@ export function createMemorySync(options: MemorySyncOptions): MemorySync {
     // GET  /{token}/ingest?data=... (single-shot small payload -> commit)
     if (action === "ingest") {
       if (method === "POST") {
-        const result = await commit({ token, payload: request.body, source: sourceOf(query, request.body) });
+        const result = await commit({ token, payload: request.body, source });
         return json(result.status, result.ok
           ? { ok: true, committed: result.committed, received: result.received, source: result.source }
           : { ok: false, error: result.reason, received: result.received });
@@ -425,7 +450,7 @@ export function createMemorySync(options: MemorySyncOptions): MemorySync {
       if (method === "GET") {
         const data = query.data ?? query.d;
         if (data === undefined) return json(422, { ok: false, error: "missing_data" });
-        const result = await commit({ token, payload: data, source: sourceOf(query) });
+        const result = await commit({ token, payload: data, source });
         return json(result.status, result.ok
           ? { ok: true, committed: result.committed, received: result.received, source: result.source }
           : { ok: false, error: result.reason, received: result.received });
@@ -434,17 +459,18 @@ export function createMemorySync(options: MemorySyncOptions): MemorySync {
     }
 
     // GET /{token}/m/<...memories>  — memories appended directly in the URL path.
+    // With a provider prefix: GET /{token}/from/{provider}/m/<...memories>.
     // This is the primary plain-chat path: the assistant opens one URL with the
     // (url-encoded, newline- or slash-separated) memory appended after `/m/`.
     if (action === "m" || action === "save") {
       if (method !== "GET" && method !== "POST") return json(405, { ok: false, error: "method_not_allowed" });
-      const rest = segments.slice(2);
+      const rest = routeSegments.slice(2);
       const inlineData = query.data ?? query.d;
       const payload = rest.length > 0
         ? rest.map(decodePathSegment).join("\n")
         : inlineData;
       if (payload === undefined) return json(422, { ok: false, error: "missing_data" });
-      const result = await commit({ token, payload, source: sourceOf(query) });
+      const result = await commit({ token, payload, source });
       return json(result.status, result.ok
         ? { ok: true, committed: result.committed, received: result.received, source: result.source }
         : { ok: false, error: result.reason, received: result.received });
@@ -470,7 +496,7 @@ export function createMemorySync(options: MemorySyncOptions): MemorySync {
     // GET|POST /{token}/commit  (reassemble buffered chunks -> commit)
     if (action === "commit") {
       if (method !== "GET" && method !== "POST") return json(405, { ok: false, error: "method_not_allowed" });
-      return commitBufferedChunks(token, sourceOf(query, request.body));
+      return commitBufferedChunks(token, source);
     }
 
     return json(404, { ok: false, error: "not_found" });
@@ -683,10 +709,14 @@ function renderInstructions(input: {
   const hasToken = Boolean(token);
   const tokenSlug = hasToken ? token! : "<your-token>";
   const syncUrl = `${origin}${basePath}/${tokenSlug}`;
-  const saveUrl = `${syncUrl}/m`;
-  const chunkUrl = `${syncUrl}/chunk`;
-  const commitUrl = `${syncUrl}/commit`;
-  const ingestUrl = `${syncUrl}/ingest`;
+  // When we explicitly know the provider, route through /from/<provider>/ so the
+  // memory is filed into that provider's box (imports/<provider>).
+  const isProvider = input.source !== undefined && (MEMORY_SYNC_PROVIDERS as readonly string[]).includes(input.source);
+  const base = isProvider ? `${syncUrl}/from/${input.source}` : syncUrl;
+  const saveUrl = `${base}/m`;
+  const chunkUrl = `${base}/chunk`;
+  const commitUrl = `${base}/commit`;
+  const ingestUrl = `${base}/ingest`;
 
   const tokenNote = hasToken
     ? `This is your unique, expiring sync link. It is bound to one Configure account
