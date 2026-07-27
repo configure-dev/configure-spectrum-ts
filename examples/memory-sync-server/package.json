@@ -1,0 +1,16 @@
+{
+  "name": "configure-spectrum-example-memory-sync-server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "start": "npx tsx server.ts"
+  },
+  "dependencies": {
+    "configure-spectrum": "file:../.."
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "typescript": "^5.5.0"
+  }
+}

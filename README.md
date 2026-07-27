@@ -296,6 +296,40 @@ server.use(
 );
 ```
 
+## Memory Sync
+
+Memory Sync lets a signed-in user export the memory a consumer assistant (ChatGPT,
+Claude, Gemini, Grok) has saved about them into their Configure profile by pasting
+one line — no connector to add, no copy/pasting the memory text.
+
+The user signs in once (Configure quick auth) and gets a unique, expiring link.
+They paste it into the assistant; the assistant recalls their memory and opens a
+URL with the memory in the path (`.../sync/<token>/m/<url-encoded-memories>`). The
+server resolves the token to that user and writes with `profile.commit()`.
+
+```ts
+import { createMemorySync, localMemorySyncStore } from "configure-spectrum";
+
+const sync = createMemorySync({
+  apiKey: process.env.CONFIGURE_API_KEY!,
+  publishableKey: process.env.CONFIGURE_PUBLISHABLE_KEY!,
+  agent: process.env.CONFIGURE_AGENT!,
+  store: localMemorySyncStore(), // dev only — use a durable store in production
+});
+
+// SSO: start quick auth, then mint the user's personal sync link on return.
+const signInUrl = sync.signInUrl({ returnTo: "https://sign-in.me/sync/complete" });
+const ticket = await sync.completeSignIn({ code }); // ticket.syncUrl + ticket.prompt
+
+// Serve the token routes (path save, chunk, commit, ingest, llms.txt):
+export const handleSync = (request: Request) => sync.fetchHandler(request);
+```
+
+The transport is a plain URL fetch because that is the one capability every chat
+assistant has. See [Memory Sync](https://github.com/configure-dev/configure-spectrum-ts/blob/main/docs/memory-sync.md)
+for the full flow, routes, and the generated `llms.txt`, and the runnable
+[`examples/memory-sync-server`](examples/memory-sync-server).
+
 ## Production Requirements
 
 - Keep `CONFIGURE_API_KEY` on the server.
