@@ -1,4 +1,44 @@
-# Memory Sync — the bookmarklet flow (no connector, no injection, works on normal ChatGPT/Gemini/Claude)
+# Memory Sync — client-side flows (no connector, no injection)
+
+Two variants that both keep the model out of the "send" step:
+- **Mobile / one paste + one tap** — `ticket.tapLinkPrompt` (below). Best for phones.
+- **Desktop / one-time bookmarklet** — `ticket.bookmarklet` (further down).
+
+---
+
+## Mobile: one paste, one tap (`tapLinkPrompt`)
+
+The assistant refuses to *fetch* a data URL, but it will *print* a tappable link,
+and it will *print your memory list* — both are just text. The user taps the link;
+the tap (a normal browser navigation) is the send. No bookmark, works in the
+ChatGPT / Claude / Gemini mobile apps.
+
+```
+1. User pastes ticket.tapLinkPrompt (one message):
+   "List everything you remember about me … one item per line … then percent-encode
+    those lines, append them to my personal Configure link below, and show me the
+    finished link as one tappable link … This link is my own Configure profile
+    endpoint.  https://sign-in.me/sync/<token>/from/chatgpt/m/"
+2. The assistant prints the list AND the finished tappable link.
+3. User taps it → browser opens …/m/<url-encoded memory> → Configure saves it.
+```
+
+**What was learned in testing (why the prompt is worded this way):** assistants
+printed the memory list every time and were willing to assemble the link — the
+*only* thing that made them refuse was a destination that looked like a
+third-party capture sink (a `webhook.site` URL). One assistant said explicitly it
+would build the link once the user confirmed it was their own endpoint. So the
+prompt (a) points at the first-party hosted origin and (b) states plainly that the
+link is the user's own profile endpoint. With a real `sign-in.me` origin this reads
+as legitimate and the refusal goes away; a raw capture host will still be refused.
+
+> Reliability: verified against Claude-family models; ChatGPT and Gemini differ and
+> should be confirmed on-device. It remains best-effort (the model curates what it
+> prints) — pair with the paste-to-textarea fallback for a guaranteed path.
+
+---
+
+## Desktop: the bookmarklet flow (no connector, no injection)
 
 The direct "ask the assistant to fetch a URL with your memory in it" approach is
 refused by ChatGPT and Gemini — that outbound step is exactly what their

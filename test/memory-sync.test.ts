@@ -107,6 +107,9 @@ describe("createMemorySync.issue", () => {
     expect(ticket.bookmarklet.startsWith("javascript:")).toBe(true);
     expect(decodeURIComponent(ticket.bookmarklet)).toContain("https://sign-in.me/sync/mst_fixed/from/chatgpt/m");
     expect(decodeURIComponent(ticket.bookmarklet)).toContain("window.open");
+    // mobile one-paste tap-link prompt embeds the provider save base + "my own" framing
+    expect(ticket.tapLinkPrompt).toContain("https://sign-in.me/sync/mst_fixed/from/chatgpt/m/");
+    expect(ticket.tapLinkPrompt.toLowerCase()).toContain("my own configure profile");
     expect(ticket.expiresAt).toBe("2026-07-27T00:01:00.000Z");
     // chatgpt is a known provider, so the paste prompt routes through /from/chatgpt/
     expect(ticket.prompt).toContain("https://sign-in.me/sync/mst_fixed/from/chatgpt/m/");
