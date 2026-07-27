@@ -146,8 +146,20 @@ export interface MemorySyncTicket {
    */
   providerSaveUrls: Record<MemorySyncSource, string>;
   expiresAt: string;
-  /** Ready-to-paste kickoff prompt for the user. */
+  /** Ready-to-paste kickoff prompt for the user (assistant-does-the-fetch path). */
   prompt: string;
+  /**
+   * Benign prompt the user pastes to make the assistant PRINT their memory as text
+   * (plain recall — always allowed). Pair with {@link MemorySyncTicket.bookmarklet}.
+   */
+  capturePrompt: string;
+  /**
+   * A `javascript:` bookmarklet the user installs once and clicks after the
+   * assistant prints their memory. It reads the printed memory from the page and
+   * opens the save URL — so the user's own browser does the send (no connector, no
+   * model exfiltration, works on normal ChatGPT/Claude/Gemini).
+   */
+  bookmarklet: string;
 }
 
 export interface MemorySyncSignInUrlInput {
@@ -286,6 +298,8 @@ export function createMemorySync(options: MemorySyncOptions): MemorySync {
       ...l,
       expiresAt: record.expiresAt,
       prompt: kickoffPrompt(saveBase),
+      capturePrompt: capturePrompt(),
+      bookmarklet: renderBookmarklet(saveBase),
     };
   }
 
@@ -706,6 +720,42 @@ function kickoffPrompt(saveBase: string): string {
     `and open this link with that text added on the end, then tell me what it returns:`,
     `${saveBase}/<my notes, url-encoded>`,
   ].join(" ");
+}
+
+function capturePrompt(): string {
+  // Plain recall to the user — assistants do this freely; it is not an outbound
+  // action, just printing the user's own memory into the chat.
+  return [
+    `List everything you remember about me — my preferences, the projects and tools`,
+    `I've mentioned, my communication style, and other durable personal details.`,
+    `One item per line, plain text, no numbering or commentary.`,
+  ].join(" ");
+}
+
+/**
+ * Build a `javascript:` bookmarklet that reads the latest assistant message (the
+ * printed memory) from the current page and opens the save URL with it. The user
+ * installs it once and clicks it after the assistant lists their memory. The send
+ * is a user-initiated top-level navigation (not a model action, not a fetch the
+ * page CSP can block), so it works on chatgpt.com / claude.ai / gemini.
+ */
+function renderBookmarklet(saveBase: string): string {
+  // Written compactly; `saveBase` is injected as a JSON string literal.
+  const body =
+    `(function(){` +
+    `var B=${JSON.stringify(saveBase)};` +
+    `function g(){` +
+    `var s=['[data-message-author-role="assistant"]','.font-claude-message',` +
+    `'[data-testid="assistant-turn"]','message-content','.model-response-text',` +
+    `'.markdown'];` +
+    `for(var i=0;i<s.length;i++){var e=document.querySelectorAll(s[i]);` +
+    `if(e.length)return e[e.length-1].innerText;}` +
+    `return (window.getSelection?String(window.getSelection()):'');}` +
+    `var t=(g()||'').trim();` +
+    `if(!t){alert('Configure: select your memory list (or ask the assistant to list it) and click again.');return;}` +
+    `window.open(B+'/'+encodeURIComponent(t),'_blank');` +
+    `})();`;
+  return `javascript:${encodeURIComponent(body)}`;
 }
 
 function renderInstructions(input: {

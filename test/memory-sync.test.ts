@@ -102,6 +102,11 @@ describe("createMemorySync.issue", () => {
     expect(ticket.saveUrlTemplate).toBe("https://sign-in.me/sync/mst_fixed/m/<url-encoded-memories>");
     expect(ticket.providerSaveUrls.chatgpt).toBe("https://sign-in.me/sync/mst_fixed/from/chatgpt/m/");
     expect(ticket.providerSaveUrls.claude).toBe("https://sign-in.me/sync/mst_fixed/from/claude/m/");
+    // capture prompt is benign recall; bookmarklet embeds the provider save base
+    expect(ticket.capturePrompt.toLowerCase()).toContain("list everything you remember");
+    expect(ticket.bookmarklet.startsWith("javascript:")).toBe(true);
+    expect(decodeURIComponent(ticket.bookmarklet)).toContain("https://sign-in.me/sync/mst_fixed/from/chatgpt/m");
+    expect(decodeURIComponent(ticket.bookmarklet)).toContain("window.open");
     expect(ticket.expiresAt).toBe("2026-07-27T00:01:00.000Z");
     // chatgpt is a known provider, so the paste prompt routes through /from/chatgpt/
     expect(ticket.prompt).toContain("https://sign-in.me/sync/mst_fixed/from/chatgpt/m/");
