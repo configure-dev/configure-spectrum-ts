@@ -555,8 +555,24 @@ export function createMemorySync(options: MemorySyncOptions): MemorySync {
     for (const [key, value] of url.searchParams) query[key] = value;
     let body: unknown;
     if (request.method !== "GET" && request.method !== "HEAD") {
-      const raw = await request.text();
-      body = raw ? safeJsonOrText(raw) : undefined;
+      const contentType = request.headers.get("content-type") ?? "";
+      if (contentType.includes("form-data") || contentType.includes("x-www-form-urlencoded")) {
+        // Web Share Target: the assistant's output is shared straight to
+        // /{token}/ingest as a form POST (fields title/text/url + optional source).
+        const form = await request.formData();
+        const shared = ["title", "text", "url"]
+          .map((field) => form.get(field))
+          .filter((value): value is string => typeof value === "string" && value.length > 0)
+          .join("\n");
+        const sharedSource = form.get("source");
+        body = {
+          text: shared,
+          ...(typeof sharedSource === "string" && sharedSource ? { source: sharedSource } : {}),
+        };
+      } else {
+        const raw = await request.text();
+        body = raw ? safeJsonOrText(raw) : undefined;
+      }
     }
     const response = await handle({ method: request.method, path, query, body });
     return new Response(response.body, {

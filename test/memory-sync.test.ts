@@ -346,6 +346,21 @@ describe("createMemorySync ingest routes", () => {
     expect(await response.json()).toMatchObject({ ok: true, committed: 1 });
     expect(calls.find((c) => c.pathname === "/v1/profile/commit")?.body.memories).toEqual(["fetch fact"]);
   });
+
+  it("accepts a Web Share Target form POST (share-to-Configure return trip)", async () => {
+    const store = localMemorySyncStore();
+    const { fetchFn, calls } = captureFetch();
+    const sync = createMemorySync({ ...baseOptions, store, fetch: fetchFn, randomToken: () => "mst_share", basePath: "/sync" });
+    await sync.issue({ configureToken: "agent-token" });
+
+    // what the assistant printed, shared to /ingest as form fields
+    const form = new URLSearchParams({ text: "likes tea\nuses vim", source: "chatgpt" });
+    const request = new Request("https://sign-in.me/sync/mst_share/ingest", { method: "POST", body: form });
+    const response = await sync.fetchHandler(request);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, committed: 2, source: "chatgpt" });
+    expect(calls.find((c) => c.pathname === "/v1/profile/commit")?.body.memories).toEqual(["likes tea", "uses vim"]);
+  });
 });
 
 describe("createMemorySync SSO flow", () => {
