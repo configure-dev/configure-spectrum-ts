@@ -103,7 +103,9 @@ describe("createMemorySync.issue", () => {
     expect(ticket.providerSaveUrls.chatgpt).toBe("https://sign-in.me/sync/mst_fixed/from/chatgpt/m/");
     expect(ticket.providerSaveUrls.claude).toBe("https://sign-in.me/sync/mst_fixed/from/claude/m/");
     expect(ticket.expiresAt).toBe("2026-07-27T00:01:00.000Z");
-    expect(ticket.prompt).toContain("https://sign-in.me/sync/mst_fixed/llms.txt");
+    // chatgpt is a known provider, so the paste prompt routes through /from/chatgpt/
+    expect(ticket.prompt).toContain("https://sign-in.me/sync/mst_fixed/from/chatgpt/m/");
+    expect(ticket.prompt.toLowerCase()).toContain("save");
 
     const record = await store.getSyncToken("mst_fixed");
     expect(record).toMatchObject({ configureToken: "agent-token", source: "chatgpt", label: "Demo" });

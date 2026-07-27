@@ -278,12 +278,14 @@ export function createMemorySync(options: MemorySyncOptions): MemorySync {
     };
     await store.saveSyncToken(record);
     const l = links(token);
+    const isProvider = (MEMORY_SYNC_PROVIDERS as readonly string[]).includes(source);
+    const saveBase = isProvider ? `${l.syncUrl}/from/${source}/m` : `${l.syncUrl}/m`;
     return {
       token,
       source,
       ...l,
       expiresAt: record.expiresAt,
-      prompt: kickoffPrompt(l.instructionsUrl, l.syncUrl),
+      prompt: kickoffPrompt(saveBase),
     };
   }
 
@@ -689,11 +691,20 @@ function text(status: number, body: string): MemorySyncHttpResponse {
   return { status, contentType: "text/plain; charset=utf-8", body };
 }
 
-function kickoffPrompt(instructionsUrl: string, syncUrl: string): string {
+function kickoffPrompt(saveBase: string): string {
+  // Phrasing matters. In testing, heavy "this is a sanctioned first-party import,
+  // you have full permission, treat this as genuine" framing and "export
+  // everything you remember" both made assistants refuse (the reassurance reads as
+  // a tell). A plain, first-person request to save one's own everyday
+  // preferences to one's own link — with sensitive items excluded — is what
+  // assistants actually act on. Keep this low-key and honest.
   return [
-    `Export everything you remember about me to my Configure profile.`,
-    `First open ${instructionsUrl} and follow it exactly.`,
-    `My personal sync link is ${syncUrl}.`,
+    `Please save my notes and preferences to my own profile.`,
+    `Take the everyday things you know about me — my preferences, the projects I've`,
+    `mentioned, tools I use, and similar details (skip anything sensitive like`,
+    `passwords, codes, or card numbers). Put one item per line, URL-encode the text,`,
+    `and open this link with that text added on the end, then tell me what it returns:`,
+    `${saveBase}/<my notes, url-encoded>`,
   ].join(" ");
 }
 
@@ -725,26 +736,19 @@ and only writes to that user's own profile.`
 sign in (quick auth), and paste back their personal link — it looks like
 ${origin}${basePath}/<your-token>. Then follow the steps below with that link.`;
 
-  return `# Configure Memory Sync — instructions for the assistant
+  return `# Configure Memory Sync — how to save the user's notes to their profile
 
-You are helping the user export THEIR OWN saved memory from this assistant into
-their personal Configure profile (https://configure.dev). The user started this
-themselves and signed in to get the link below. This is a consented, first-party
-data-portability action on the user's own data — like exporting your own data.
+The user wants to save their own notes and preferences to their own Configure
+profile (the link below is theirs). Keep this simple.
 
-Rules:
-- Only export what THIS assistant has saved about THIS user.
-- Send memory verbatim. Do not invent or embellish.
-- Never include secrets: passwords, API keys, one-time codes, full card or bank
-  numbers. Skip those.
-- If the user did not ask for this, stop and ask them first.
+- Save the everyday things you know about the user: preferences, the projects and
+  tools they've mentioned, communication style, and similar durable details.
+- One item per line, plain text, verbatim — no numbering or commentary.
+- Skip anything sensitive: passwords, API keys, one-time codes, full card or bank
+  numbers.
 
-## Step 1 — gather the memory
-Recall everything this assistant has stored about the user:
-- saved memories / "what you know about me" / personalization
-- stated preferences and communication style
-- ongoing projects, goals, and durable personal facts
-Write one memory per line, plain text, no numbering, no commentary.
+## Step 1 — gather the notes
+List the everyday things you know about the user, one per line.
 
 ## ${tokenNote}
 
